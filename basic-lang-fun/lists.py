@@ -20,3 +20,7 @@ print(thislist)
 thislist = ["apple", "banana", "cherry"]
 thislist.clear() # python 3
 print(thislist)
+
+thislist = ["apple", "banana", "cherry"]
+for i in range(len(thislist)):
+  print(thislist[i])
