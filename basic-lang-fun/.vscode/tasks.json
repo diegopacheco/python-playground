@@ -1,0 +1,5 @@
+"triggerTaskOnSave.tasks": {
+    "build": [
+        "python -u '/mnt/e35d88d4-42b9-49ea-bf29-c4c3b018d429/diego/git/diegopacheco/python-playground/basic-lang-fun/dicts.py'",
+    ],
+},
