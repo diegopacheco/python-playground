@@ -11,3 +11,4 @@ data = {
 #load data into a DataFrame object:
 df = pd.DataFrame(data)
 print(df) 
+print(df.info) 
