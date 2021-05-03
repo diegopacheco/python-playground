@@ -22,11 +22,10 @@ for country in root.findall('country'):
 
 print(str(root.findall(".//*[@name='Singapore']/year")))  
 
-json_data = {
-    x.attrib("name"): {
-        "r": 42
+print("final:\n")
+json_data = { 
+    "contries: ": {
+        str(x.get("name")) for x in root.findall(".//country/")
     }
-    for x in root.findall(".//year/")
 }
-#print(root.findall(".//country/"))
 print(json_data)
