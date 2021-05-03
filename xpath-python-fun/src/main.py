@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import pathlib
+import json
 
 #
 # more on https://www.w3schools.com/xml/xpath_syntax.asp
@@ -22,10 +23,10 @@ for country in root.findall('country'):
 
 print(str(root.findall(".//*[@name='Singapore']/year")))  
 
-print("final:\n")
+print("final json data:")
 json_data = { 
-    "contries: ": {
-        str(x.get("name")) for x in root.findall(".//country/")
-    }
+    "contries: ": [
+        str(x.get("name")) for x in root.findall("./country/") if str(x.get("name")) != "None"
+    ]
 }
-print(json_data)
+print(json.dumps(json_data, indent=2, sort_keys=True))
