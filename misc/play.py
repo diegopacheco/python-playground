@@ -9,15 +9,15 @@ if value==100 :
    print ("The value is %s" % value)
 else:
    print ("This is other loousy value %s" % value)
-   
-# Loop fun and stuffs   
+
+# Loop fun and stuffs
 i = 1
 while (i <= 10):
    print ("2 X %d = %d " %  (i, i * 2) )
    i = i + 1
 
 fruits = ['banana', 'apple',  'mango', 'melancia']
-for fruit in fruits:        
+for fruit in fruits:
    print ('Current fruit :', fruit)
 
 for letter in 'Python':
@@ -47,7 +47,7 @@ print (dict)
 dict = {'Name': 'Zara', 'Age': 7, 'Class': 'First'}
 print ("dict['Name']: ", dict['Name'])
 print ("dict['Age']: ", dict['Age'])
-   
+
 del dict['Name']
 print (dict)
 
@@ -84,7 +84,7 @@ print ("Value of total : ", sum( 10, 20 ))
 # Yes we can return
 def kicks(who = "Argentina"):
     return ("Yes %s sucks" % who)
-	
+
 whoSucks = kicks("Inter")
 print (whoSucks)
 
@@ -114,10 +114,10 @@ class People(Parent):
    def __init__(self, name, age):
       self.name = name
       self.age  = age
-   
+
    def __str__(self):
      return ("Name: %s Age %d" % (self.name, self.age) )
-   
+
    def displayName(self):
      print ("My Name is %s" % self.name)
 

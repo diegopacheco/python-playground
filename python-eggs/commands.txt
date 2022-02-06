@@ -20,4 +20,3 @@ sudo -E python -m easy_install dist/simpleeggs-1.0.0-py2.7.egg
 python3
 from simpleeggs.emath import *
 sumEggs(2,2)
-

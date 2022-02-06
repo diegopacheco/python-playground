@@ -14,17 +14,17 @@ print(str(root))
 for child in root:
  print(child.tag, child.attrib)
 
-print(root[0][1].text) 
+print(root[0][1].text)
 
 for country in root.findall('country'):
      rank = country.find('rank').text
      name = country.get('name')
      print(name, rank)
 
-print(str(root.findall(".//*[@name='Singapore']/year")))  
+print(str(root.findall(".//*[@name='Singapore']/year")))
 
 print("final json data:")
-json_data = { 
+json_data = {
     "contries: ": [
         str(x.get("name")) for x in root.findall("./country/") if str(x.get("name")) != "None"
     ]

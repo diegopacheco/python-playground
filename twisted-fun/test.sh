@@ -1,3 +1,3 @@
 #!/bin/bash
 
- netcat 127.0.1 1234  
+ netcat 127.0.1 1234

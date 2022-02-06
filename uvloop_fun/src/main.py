@@ -7,4 +7,3 @@ async def main():
 
 uvloop.install()
 asyncio.run(main())
-

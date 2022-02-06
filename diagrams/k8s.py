@@ -8,4 +8,3 @@ with Diagram("Exposed Pod with 3 Replicas", show=False):
     net >> [Pod("pod1"),
             Pod("pod2"),
             Pod("pod3")] << ReplicaSet("rs") << Deployment("dp") << HPA("hpa")
-

@@ -5,5 +5,5 @@ myfunction()
 
 def varargsFun(*kids):
   print("The youngest child is " + kids[2])
-  
+
 varargsFun("Emil", "Tobias", "Linus")

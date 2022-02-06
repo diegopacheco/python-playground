@@ -9,7 +9,7 @@ class Listener(object):
 
     def on_message(self, headers, message):
 		print '[message-sucker.py] sucking message: %s Kb' %  (len(message) / 1024)
-		
+
 
 conn=stomp.Connection([('127.0.0.1',61613)])
 conn.add_listener(Listener())

@@ -9,4 +9,3 @@ try:
     print(next(myit))
 except StopIteration:
   print("StopIteration error")
-

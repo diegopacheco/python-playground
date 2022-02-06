@@ -1,3 +1,3 @@
-#!/bin/bash 
+#!/bin/bash
 
 pip3 install -r requirements.txt

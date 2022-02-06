@@ -5,7 +5,7 @@ class DevHours:
 
 	WORKED = 26.0
 	MES  = 6
-	ANO  = 2014 
+	ANO  = 2014
 	FERIADOS = 1
 
 	WH   = 8.45
@@ -19,7 +19,7 @@ class DevHours:
 		        if day == 0 or i >= 5:
 		            continue
 		        weekday_count = weekday_count + 1
-		return weekday_count - self.FERIADOS        
+		return weekday_count - self.FERIADOS
 
 	def calcMissingDays(self):
 	    today_day = datetime.datetime.now().day
@@ -29,7 +29,7 @@ class DevHours:
 		return (self.BASE - workedHours)
 
 	def calcDiffHoursPerDay(self,workedHours):
-	    return ( self.calcDiff(workedHours) / self.calcMissingDays() ) 
+	    return ( self.calcDiff(workedHours) / self.calcMissingDays() )
 
 	def info(self):
 		weekday_count = self.countDays()
