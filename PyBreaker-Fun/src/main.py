@@ -2,7 +2,7 @@ from decimal import DivisionByZero
 import logging
 import pybreaker
 
-class DBListener(pybreaker.CircuitBreakerListener):
+class Listener(pybreaker.CircuitBreakerListener):
     "Listener used by circuit breakers that execute database operations."
     def before_call(self, cb, func, *args, **kwargs):
         "Called before the circuit breaker `cb` calls `func`."
@@ -22,14 +22,14 @@ class DBListener(pybreaker.CircuitBreakerListener):
         #logging.warning('success ',cb)
         pass
 
-db_breaker = pybreaker.CircuitBreaker(fail_max=2, reset_timeout=10, listeners=[DBListener()])
+breaker = pybreaker.CircuitBreaker(fail_max=2, reset_timeout=10, listeners=[Listener()])
 
-@db_breaker
+@breaker
 def doWork():
     logging.warning('\n')
     logging.warning('doWork there we go... ')
-    logging.warning('pybreaker: failure counter ' + str(db_breaker.fail_counter))
-    logging.warning('pybreaker: state: ' + str(db_breaker.current_state))
+    logging.warning('pybreaker: failure counter ' + str(breaker.fail_counter))
+    logging.warning('pybreaker: state: ' + str(breaker.current_state))
     raise DivisionByZero
 
 def safeDoWork():
@@ -46,6 +46,6 @@ safeDoWork()
 
 # close the Circuit Breaker allowing work to go trught it
 # fail counter will goto ZERO.
-db_breaker.close()
-logging.warning('pybreaker: state: ' + str(db_breaker.current_state))
+breaker.close()
+logging.warning('pybreaker: state: ' + str(breaker.current_state))
 safeDoWork()
