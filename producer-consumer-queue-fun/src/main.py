@@ -2,7 +2,6 @@ import time
 from queue import Empty, Queue
 from threading import Thread
 
-
 def producer(queue,how_much):
     for i in range(1, how_much):
         print(f'[>>> Producer] put item {i} into the queue')
@@ -32,15 +31,14 @@ def main():
         Thread(
             target=consumer,
             args=(queue,),
-            daemon=True
+            daemon=False
         )
     ]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    
-    #queue.join()
+    queue.join()
 
 if __name__ == '__main__':
     main()
