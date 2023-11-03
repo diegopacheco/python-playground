@@ -13,3 +13,13 @@ django-admin startproject mysite
 python manage.py runserver
 ```
 goto http://127.0.0.1:8000/
+
+### Admin interface
+
+create a user
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+goto: http://127.0.0.1:8000/admin/
