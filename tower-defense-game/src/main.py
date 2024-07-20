@@ -102,10 +102,9 @@ def create_enemy():
     # ramdon generate 3 valid enemy paths
     enemy_paths = []
     for i in range(3):
-        path = []
-        for j in range(4):
-            path.append((random.randint(100, 700), random.randint(100, 500)))
-        enemy_paths.append(path)
+        x = random.randint(0, SCREEN_WIDTH)
+        y = random.randint(0, SCREEN_HEIGHT)
+        enemy_paths.append([x,y])
     new_enemy = Enemy(enemy_path)
     
     # Add the new enemy to the enemies list
@@ -123,6 +122,7 @@ bullets = []
 remaining_bullets = []
 enemies = []
 score = 0
+life = 100
 
 player = Player((50, 50))
 enemy_path = [(100, 100), (200, 200), (300, 300)]  # Example path
@@ -192,9 +192,14 @@ while running:
     player.draw(screen)
     
     # Display the score
-    font = pygame.font.Font(None, 36)  # Choose an appropriate font and size
-    text = font.render(f'Score: {score}', True, (255, 255, 255))  # White color for the text
+    font = pygame.font.Font(None, 36)
+    text = font.render(f'Score: {score}', True, (255, 255, 255))
     screen.blit(text, (10, 10))
+
+    # Display the life
+    font = pygame.font.Font(None, 36)
+    text = font.render(f'Life: {life}', True, (0, 255, 0))
+    screen.blit(text, (680, 10))
 
     # Game Render
     pygame.display.flip()
