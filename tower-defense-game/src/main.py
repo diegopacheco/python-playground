@@ -30,7 +30,8 @@ class Enemy:
                 self.path_index += 1
         else:
             # Reset to start or remove enemy
-            self.path_index = 0  # Or handle enemy reaching the end
+            # Or handle enemy reaching the end
+            self.path_index = 0  
 
     def draw(self, screen):
         screen.blit(self.image, self.pos)
@@ -43,7 +44,6 @@ class Player:
         self.bullets = []
         self.image = pygame.image.load('assets/player.png')
         self.image = pygame.transform.scale(self.image, (50, 50))
-        #self.rect = pygame.Rect(self.pos[0], self.pos[1], 50, 50)
         self.rect = self.image.get_rect(topleft=(self.pos[0], self.pos[1]))
 
     def draw(self, screen):
@@ -127,7 +127,7 @@ score = 0
 life = 100
 
 player = Player(( SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-enemy_path = [(100, 100), (200, 200), (300, 300)]  # Example path
+enemy_path = [(100, 100), (200, 200), (300, 300)]
 enemy = Enemy(enemy_path)
 enemies.append(enemy)
 
