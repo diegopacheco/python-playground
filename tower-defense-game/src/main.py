@@ -34,24 +34,21 @@ class Enemy:
 
     def draw(self, screen):
         screen.blit(self.image, self.pos)
-        #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
 
 class Player:
     def __init__(self, pos):
-        #self.pos = pos
         self.pos = [100, 100]
         self.size = 30
         self.color = (0, 0, 255)
         self.bullets = []
         self.image = pygame.image.load('assets/player.png')
         self.image = pygame.transform.scale(self.image, (50, 50))
-        self.rect = pygame.Rect(self.pos[0], self.pos[1], 50, 50)
+        #self.rect = pygame.Rect(self.pos[0], self.pos[1], 50, 50)
+        self.rect = self.image.get_rect(topleft=(self.pos[0], self.pos[1]))
 
     def draw(self, screen):
-        #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
-        #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
         screen.blit(self.image, self.pos)
-        for bullet in self.bullets:  # Draw each bullet
+        for bullet in self.bullets:
             bullet.draw(screen)
 
     def move(self, direction):
@@ -67,6 +64,7 @@ class Player:
             new_pos = (min(WINDOW_WIDTH - self.size, self.pos[0] + 5), self.pos[1])
         # Update position if within bounds
         self.pos = new_pos
+        self.rect.topleft = self.pos
     
     def shoot(self):
         new_bullet = Bullet(self.pos[0] + self.size // 2, self.pos[1])
@@ -99,14 +97,8 @@ def check_bullet_collisions(bullets, enemy):
                     return True
     return False
 
-def check_collision(player, enemy, margin=1):
-    return player.rect.colliderect(enemy.rect)
-    #player_rect = pygame.Rect(player.rect.x + margin, player.rect.y + margin,
-     #                         player.rect.width - 2 * margin, player.rect.height - 2 * margin)
-    #enemy_rect = pygame.Rect(enemy.rect.x + margin, enemy.rect.y + margin,
-    #                         enemy.rect.width - 2 * margin, enemy.rect.height - 2 * margin)
-    # Check if the adjusted rectangles overlap
-    #return player_rect.colliderect(enemy_rect)     
+def check_collision(player, enemy):
+    return player.rect.colliderect(enemy.rect)     
 
 def create_enemy():
     # ramdon generate 3 valid enemy paths
@@ -174,6 +166,17 @@ while running:
     # Clear screen with black background
     screen.fill((0, 0, 0))  
 
+    # Move the player based on key states
+    if key_up:
+        player.move("UP")
+    if key_down:
+        player.move("DOWN")
+    if key_left:
+        player.move("LEFT")
+    if key_right:
+        player.move("RIGHT")
+
+    # Bullets move and draw
     for bullet in player.bullets[:]:
         bullet.move()
         if bullet.pos[0] < 0 or bullet.pos[0] > SCREEN_WIDTH or bullet.pos[1] < 0 or bullet.pos[1] > SCREEN_HEIGHT:
@@ -188,32 +191,21 @@ while running:
                     create_enemy()
                 create_enemy()
 
-    # Move the player based on key states
-    if key_up:
-        player.move("UP")
-    if key_down:
-        player.move("DOWN")
-    if key_left:
-        player.move("LEFT")
-    if key_right:
-        player.move("RIGHT")
-
     # Draw the enemy and player
     for enemy in enemies:
         enemy.move()
         enemy.draw(screen)
-        if check_collision(player, enemy):  # Check for collision with each enemy
-            life -= 1  # Reduce player's health by 25
-            if life <= 0:  # Check if player's health is 0 or less
-                # Display Game Over message
+        if check_collision(player, enemy):
+            life -= 1
+            if life <= 0:
                 game_over_text = font.render('Game Over', True, (255, 0, 0))
                 screen.blit(game_over_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
-                pygame.display.update()  # Update the display to show the Game Over message
-                pygame.time.wait(2000)  # Wait for 2 seconds
-                running = False  # End the game loop, effectively ending the game
+                pygame.display.update()
+                pygame.time.wait(2000)
+                running = False
                 break  
     player.draw(screen)
-    
+
     # Display the score
     font = pygame.font.Font(None, 36)
     text = font.render(f'Score: {score}', True, (255, 255, 255))
