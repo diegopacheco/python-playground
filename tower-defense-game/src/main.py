@@ -1,6 +1,7 @@
 import pygame
 import sys
 import math
+import random
 
 class Enemy:
     def __init__(self, path):
@@ -97,6 +98,19 @@ def check_bullet_collisions(bullets, enemy):
                     return True
     return False
 
+def create_enemy():
+    # ramdon generate 3 valid enemy paths
+    enemy_paths = []
+    for i in range(3):
+        path = []
+        for j in range(4):
+            path.append((random.randint(100, 700), random.randint(100, 500)))
+        enemy_paths.append(path)
+    new_enemy = Enemy(enemy_path)
+    
+    # Add the new enemy to the enemies list
+    enemies.append(new_enemy)
+
 pygame.init()
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 WINDOW_WIDTH = SCREEN_WIDTH
@@ -159,6 +173,7 @@ while running:
         for enemy in enemies[:]:
             if check_bullet_collisions(player.bullets, enemy):
                 score += 10
+                create_enemy()
 
     # Move the player based on key states
     if key_up:
