@@ -12,6 +12,8 @@ class Enemy:
         self.radius = 10 
         self.size = 20
         self.color = (255, 0, 0)
+        self.image = pygame.image.load('assets/enemy.png')
+        self.image = pygame.transform.scale(self.image, (40, 40))
 
     def move(self):
         if self.path_index < len(self.path) - 1:
@@ -28,7 +30,8 @@ class Enemy:
             self.path_index = 0  # Or handle enemy reaching the end
 
     def draw(self, screen):
-        pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
+        screen.blit(self.image, self.pos)
+        #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
 
 class Player:
     def __init__(self, pos):
@@ -37,10 +40,13 @@ class Player:
         self.size = 30
         self.color = (0, 0, 255)
         self.bullets = []
+        self.image = pygame.image.load('assets/player.png')
+        self.image = pygame.transform.scale(self.image, (50, 50))
 
     def draw(self, screen):
         #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
-        pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
+        #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
+        screen.blit(self.image, self.pos)
         for bullet in self.bullets:  # Draw each bullet
             bullet.draw(screen)
 
