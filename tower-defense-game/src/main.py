@@ -91,7 +91,7 @@ class Bullet:
 
 class Game:
     def __init__(self):
-        self.pygame = pygame.init()
+        pygame.init()
         self.ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         self.clock = pygame.time.Clock()
@@ -147,24 +147,24 @@ class Game:
                     self.running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP:
-                        key_up = True
+                        self.key_up = True
                     elif event.key == pygame.K_DOWN:
-                        key_down = True
+                        self.key_down = True
                     elif event.key == pygame.K_LEFT:
-                        key_left = True
+                        self.key_left = True
                     elif event.key == pygame.K_RIGHT:
-                        key_right = True
+                        self.key_right = True
                     elif event.key == pygame.K_SPACE:
                         self.player.shoot()
                 elif event.type == pygame.KEYUP:
                     if event.key == pygame.K_UP:
-                        key_up = False
+                        self.key_up = False
                     elif event.key == pygame.K_DOWN:
-                        key_down = False
+                        self.key_down = False
                     elif event.key == pygame.K_LEFT:
-                        key_left = False
+                        self.key_left = False
                     elif event.key == pygame.K_RIGHT:
-                        key_right = False
+                        self.key_right = False
 
             # Game logic updates
             # Clear screen with black background
@@ -183,13 +183,13 @@ class Game:
             # Bullets move and draw
             for bullet in self.player.bullets[:]:
                 bullet.move()
-                if bullet.pos[0] < 0 or bullet.pos[0] > self.SCREEN_WIDTH or bullet.pos[1] < 0 or bullet.pos[1] > SCREEN_HEIGHT:
+                if bullet.pos[0] < 0 or bullet.pos[0] > SCREEN_WIDTH or bullet.pos[1] < 0 or bullet.pos[1] > SCREEN_HEIGHT:
                     self.player.bullets.remove(bullet)  # Remove the bullet if it's out of bounds
                     continue  # Skip the rest of the loop for this bullet
                 bullet.draw(self.screen) 
                 for enemy in self.enemies[:]:
-                    if self.check_bullet_collisions(self,self.player.bullets, enemy):
-                        score += 10
+                    if self.check_bullet_collisions(self.player.bullets, enemy):
+                        self.score += 10
                         # ramon 1/9 chances creates 2 enmies
                         if random.randint(1, 9) == 1:
                             self.create_enemy()
@@ -204,8 +204,8 @@ class Game:
                     if self.life <= 0:
                         game_over_text = font.render('Game Over', True, (255, 0, 0))
                         self.screen.blit(game_over_text, (self.SCREEN_WIDTH // 2 - 100, self.SCREEN_HEIGHT // 2))
-                        self.pygame.display.update()
-                        self.pygame.time.wait(2000)
+                        pygame.display.update()
+                        pygame.time.wait(2000)
                         self.running = False
                         break  
             self.player.draw(self.screen)
@@ -221,10 +221,10 @@ class Game:
             self.screen.blit(text, (680, 10))
 
             # Game Render
-            self.pygame.display.flip()
+            pygame.display.flip()
             self.clock.tick(60)
 
-        self.pygame.quit()
+        pygame.quit()
         sys.exit()
 
 if __name__ == "__main__":
