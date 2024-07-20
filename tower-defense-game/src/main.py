@@ -2,12 +2,6 @@ import pygame
 import sys
 import math
 
-pygame.init()
-SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
-ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]  # Simplified path
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-clock = pygame.time.Clock()
-
 class Enemy:
     def __init__(self, path):
         self.path = path
@@ -41,24 +35,54 @@ class Player:
         self.pos = pos
         self.size = 30
         self.color = (0, 0, 255)
+        self.bullets = []
 
     def draw(self, screen):
         pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
 
     def move(self, direction):
         if direction == "UP":
-            self.pos = (self.pos[0], self.pos[1] - 5)
+            new_pos = (self.pos[0], max(0, self.pos[1] - 5))
         elif direction == "DOWN":
-            self.pos = (self.pos[0], self.pos[1] + 5)
+            # Subtract self.size to ensure the bottom edge of the player does not go out of bounds
+            new_pos = (self.pos[0], min(WINDOW_HEIGHT - self.size, self.pos[1] + 5))
         elif direction == "LEFT":
-            self.pos = (self.pos[0] - 5, self.pos[1])
+            new_pos = (max(0, self.pos[0] - 5), self.pos[1])
         elif direction == "RIGHT":
-            self.pos = (self.pos[0] + 5, self.pos[1])
+            # Subtract self.size to ensure the right edge of the player does not go out of bounds
+            new_pos = (min(WINDOW_WIDTH - self.size, self.pos[0] + 5), self.pos[1])
+        # Update position if within bounds
+        self.pos = new_pos
+    
+    def shoot(self):
+        global bullets
+        new_bullet = Bullet((self.pos[0], self.pos[1]))
+        bullets.append(new_bullet)
+
+class Bullet:
+    def __init__(self, pos):
+        self.pos = pos
+        self.speed = 10
+        self.radius = 5
+
+    def move(self):
+        self.pos = (self.pos[0], self.pos[1] - self.speed)
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, (0, 255, 0), self.pos, self.radius)
+
+pygame.init()
+SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
+WINDOW_WIDTH = SCREEN_WIDTH
+WINDOW_HEIGHT = SCREEN_HEIGHT
+ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]  # Simplified path
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+clock = pygame.time.Clock()
 
 player = Player((50, 50))
-
 enemy_path = [(100, 100), (200, 200), (300, 300)]  # Example path
 enemy = Enemy(enemy_path)
+bullets = []
 
 key_up = False
 key_down = False
@@ -88,6 +112,20 @@ while running:
                 key_left = False
             elif event.key == pygame.K_RIGHT:
                 key_right = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                player.shoot()
+
+    # Game logic updates
+    # Clear screen with black background
+    screen.fill((0, 0, 0))  
+
+    for bullet in bullets[:]:
+        bullet.move()
+        bullet.draw(screen)
+        # Remove bullets that go off-screen
+        if bullet.pos[1] < -10:
+            bullets.remove(bullet)
 
     # Move the player based on key states
     if key_up:
@@ -110,7 +148,6 @@ while running:
 
     # Game Render
     pygame.display.flip()
-
     clock.tick(60)
 
 pygame.quit()
