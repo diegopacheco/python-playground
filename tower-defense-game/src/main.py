@@ -13,7 +13,7 @@ class Enemy:
         self.size = 20
         self.color = (255, 0, 0)
         self.image = pygame.image.load('assets/enemy.png')
-        self.image = pygame.transform.scale(self.image, (40, 40))
+        self.image = pygame.transform.scale(self.image, (60, 60))
 
     def move(self):
         if self.path_index < len(self.path) - 1:
