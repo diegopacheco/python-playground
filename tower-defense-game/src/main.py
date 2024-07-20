@@ -45,6 +45,7 @@ class Player:
         self.bullets = []
         self.image = pygame.image.load('assets/player.png')
         self.image = pygame.transform.scale(self.image, (50, 50))
+        self.rect = pygame.Rect(self.pos[0], self.pos[1], 50, 50)
 
     def draw(self, screen):
         #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
@@ -98,6 +99,16 @@ def check_bullet_collisions(bullets, enemy):
                     return True
     return False
 
+def check_collision(player, enemy, margin=1):
+     #return player.rect.colliderect(enemy.rect)
+    player_rect = pygame.Rect(player.rect.x + margin, player.rect.y + margin,
+                              player.rect.width - 2 * margin, player.rect.height - 2 * margin)
+    enemy_rect = pygame.Rect(enemy.rect.x + margin, enemy.rect.y + margin,
+                             enemy.rect.width - 2 * margin, enemy.rect.height - 2 * margin)
+
+    # Check if the adjusted rectangles overlap
+    return player_rect.colliderect(enemy_rect)     
+
 def create_enemy():
     # ramdon generate 3 valid enemy paths
     enemy_paths = []
@@ -124,7 +135,7 @@ enemies = []
 score = 0
 life = 100
 
-player = Player((50, 50))
+player = Player(( SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
 enemy_path = [(100, 100), (200, 200), (300, 300)]  # Example path
 enemy = Enemy(enemy_path)
 enemies.append(enemy)
@@ -173,6 +184,9 @@ while running:
         for enemy in enemies[:]:
             if check_bullet_collisions(player.bullets, enemy):
                 score += 10
+                # ramon 1/9 chances creates 2 enmies
+                if random.randint(1, 9) == 1:
+                    create_enemy()
                 create_enemy()
 
     # Move the player based on key states
@@ -189,6 +203,16 @@ while running:
     for enemy in enemies:
         enemy.move()
         enemy.draw(screen)
+        if check_collision(player, enemy):  # Check for collision with each enemy
+            life -= 1  # Reduce player's health by 25
+            if life <= 0:  # Check if player's health is 0 or less
+                # Display Game Over message
+                game_over_text = font.render('Game Over', True, (255, 0, 0))
+                screen.blit(game_over_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
+                pygame.display.update()  # Update the display to show the Game Over message
+                pygame.time.wait(2000)  # Wait for 2 seconds
+                running = False  # End the game loop, effectively ending the game
+                break  
     player.draw(screen)
     
     # Display the score
