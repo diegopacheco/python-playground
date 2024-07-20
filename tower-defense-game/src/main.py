@@ -132,8 +132,8 @@ class Game:
         # ramdon generate 3 valid enemy paths
         enemy_paths = []
         for i in range(3):
-            x = random.randint(0, self.SCREEN_WIDTH)
-            y = random.randint(0, self.SCREEN_HEIGHT)
+            x = random.randint(0, SCREEN_WIDTH)
+            y = random.randint(0, SCREEN_HEIGHT)
             enemy_paths.append([x,y])
         new_enemy = Enemy(self.enemy_path)
         
@@ -203,7 +203,7 @@ class Game:
                     self.life -= 1
                     if self.life <= 0:
                         game_over_text = font.render('Game Over', True, (255, 0, 0))
-                        self.screen.blit(game_over_text, (self.SCREEN_WIDTH // 2 - 100, self.SCREEN_HEIGHT // 2))
+                        self.screen.blit(game_over_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
                         pygame.display.update()
                         pygame.time.wait(2000)
                         self.running = False
