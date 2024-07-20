@@ -55,8 +55,7 @@ class Player:
         self.pos = new_pos
     
     def shoot(self):
-        global bullets
-        new_bullet = Bullet((self.pos[0], self.pos[1]))
+        new_bullet = Bullet(self.pos)
         bullets.append(new_bullet)
 
 class Bullet:
@@ -75,7 +74,7 @@ pygame.init()
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 WINDOW_WIDTH = SCREEN_WIDTH
 WINDOW_HEIGHT = SCREEN_HEIGHT
-ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]  # Simplified path
+ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 clock = pygame.time.Clock()
 
@@ -103,6 +102,8 @@ while running:
                 key_left = True
             elif event.key == pygame.K_RIGHT:
                 key_right = True
+            elif event.key == pygame.K_SPACE:
+                player.shoot()
         elif event.type == pygame.KEYUP:
             if event.key == pygame.K_UP:
                 key_up = False
@@ -112,9 +113,6 @@ while running:
                 key_left = False
             elif event.key == pygame.K_RIGHT:
                 key_right = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                player.shoot()
 
     # Game logic updates
     # Clear screen with black background
@@ -139,7 +137,6 @@ while running:
 
     # Draw the enemy and player
     enemy.move()  
-    screen.fill((0, 0, 0))
     enemy.draw(screen) 
     player.draw(screen)
     
