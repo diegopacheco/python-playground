@@ -86,8 +86,15 @@ class Bullet:
         pygame.draw.circle(screen, (0, 255, 0), self.pos, self.radius)
 
 
-def check_collision(obj1, obj2):
-    return obj1.rect.colliderect(obj2.rect)
+def check_bullet_collisions(bullets, enemy):
+    for bullet in bullets:
+        if enemy.rect.colliderect(bullet.rect):
+            enemy.health -= 50
+            bullets.remove(bullet)
+            if enemy.health <= 0:
+                if enemy in enemies:
+                    enemies.remove(enemy)
+                return True
 
 pygame.init()
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
@@ -148,7 +155,7 @@ while running:
             continue  # Skip the rest of the loop for this bullet
         bullet.draw(screen) 
         for enemy in enemies[:]:
-            if check_collision(bullet, enemy):
+            if check_bullet_collisions([bullet], enemy):
                 enemies.remove(enemy)
                 player.bullets.remove(bullet)
                 break
