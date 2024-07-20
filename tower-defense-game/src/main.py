@@ -94,7 +94,8 @@ def check_bullet_collisions(bullets, enemy):
             if enemy.health <= 0:
                 if enemy in enemies:
                     enemies.remove(enemy)
-                return True
+                    return True
+    return False
 
 pygame.init()
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
@@ -107,6 +108,7 @@ clock = pygame.time.Clock()
 bullets = []
 remaining_bullets = []
 enemies = []
+score = 0
 
 player = Player((50, 50))
 enemy_path = [(100, 100), (200, 200), (300, 300)]  # Example path
@@ -155,7 +157,8 @@ while running:
             continue  # Skip the rest of the loop for this bullet
         bullet.draw(screen) 
         for enemy in enemies[:]:
-            check_bullet_collisions(player.bullets, enemy)
+            if check_bullet_collisions(player.bullets, enemy):
+                score += 10
 
     # Move the player based on key states
     if key_up:
@@ -173,8 +176,10 @@ while running:
         enemy.draw(screen)
     player.draw(screen)
     
-    # Game Update
-    # check for collisions, etc.
+    # Display the score
+    font = pygame.font.Font(None, 36)  # Choose an appropriate font and size
+    text = font.render(f'Score: {score}', True, (255, 255, 255))  # White color for the text
+    screen.blit(text, (10, 10))
 
     # Game Render
     pygame.display.flip()
