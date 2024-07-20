@@ -100,14 +100,13 @@ def check_bullet_collisions(bullets, enemy):
     return False
 
 def check_collision(player, enemy, margin=1):
-     #return player.rect.colliderect(enemy.rect)
-    player_rect = pygame.Rect(player.rect.x + margin, player.rect.y + margin,
-                              player.rect.width - 2 * margin, player.rect.height - 2 * margin)
-    enemy_rect = pygame.Rect(enemy.rect.x + margin, enemy.rect.y + margin,
-                             enemy.rect.width - 2 * margin, enemy.rect.height - 2 * margin)
-
+    return player.rect.colliderect(enemy.rect)
+    #player_rect = pygame.Rect(player.rect.x + margin, player.rect.y + margin,
+     #                         player.rect.width - 2 * margin, player.rect.height - 2 * margin)
+    #enemy_rect = pygame.Rect(enemy.rect.x + margin, enemy.rect.y + margin,
+    #                         enemy.rect.width - 2 * margin, enemy.rect.height - 2 * margin)
     # Check if the adjusted rectangles overlap
-    return player_rect.colliderect(enemy_rect)     
+    #return player_rect.colliderect(enemy_rect)     
 
 def create_enemy():
     # ramdon generate 3 valid enemy paths
