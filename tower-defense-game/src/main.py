@@ -3,6 +3,9 @@ import sys
 import math
 import random
 
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+
 class Enemy:
     def __init__(self, path):
         self.path = path
@@ -56,12 +59,12 @@ class Player:
             new_pos = (self.pos[0], max(0, self.pos[1] - 5))
         elif direction == "DOWN":
             # Subtract self.size to ensure the bottom edge of the player does not go out of bounds
-            new_pos = (self.pos[0], min(WINDOW_HEIGHT - self.size, self.pos[1] + 5))
+            new_pos = (self.pos[0], min(SCREEN_HEIGHT - self.size, self.pos[1] + 5))
         elif direction == "LEFT":
             new_pos = (max(0, self.pos[0] - 5), self.pos[1])
         elif direction == "RIGHT":
             # Subtract self.size to ensure the right edge of the player does not go out of bounds
-            new_pos = (min(WINDOW_WIDTH - self.size, self.pos[0] + 5), self.pos[1])
+            new_pos = (min(SCREEN_WIDTH - self.size, self.pos[0] + 5), self.pos[1])
         # Update position if within bounds
         self.pos = new_pos
         self.rect.topleft = self.pos
@@ -86,139 +89,144 @@ class Bullet:
         pygame.draw.circle(screen, (0, 255, 0), self.pos, self.radius)
 
 
-def check_bullet_collisions(bullets, enemy):
-    for bullet in bullets:
-        if enemy.rect.colliderect(bullet.rect):
-            enemy.health -= 50
-            bullets.remove(bullet)
-            if enemy.health <= 0:
-                if enemy in enemies:
-                    enemies.remove(enemy)
-                    return True
-    return False
+class Game:
+    def __init__(self):
+        self.pygame = pygame.init()
+        self.ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.clock = pygame.time.Clock()
 
-def check_collision(player, enemy):
-    return player.rect.colliderect(enemy.rect)     
+        self.bullets = []
+        self.remaining_bullets = []
+        self.enemies = []
+        self.score = 0
+        self.life = 100
 
-def create_enemy():
-    # ramdon generate 3 valid enemy paths
-    enemy_paths = []
-    for i in range(3):
-        x = random.randint(0, SCREEN_WIDTH)
-        y = random.randint(0, SCREEN_HEIGHT)
-        enemy_paths.append([x,y])
-    new_enemy = Enemy(enemy_path)
-    
-    # Add the new enemy to the enemies list
-    enemies.append(new_enemy)
+        self.player = Player(( SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+        self.enemy_path = [(100, 100), (200, 200), (300, 300)]
+        self.enemy = Enemy(self.enemy_path)
+        self.enemies.append(self.enemy)
 
-pygame.init()
-SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
-WINDOW_WIDTH = SCREEN_WIDTH
-WINDOW_HEIGHT = SCREEN_HEIGHT
-ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-clock = pygame.time.Clock()
+        self.key_up = False
+        self.key_down = False
+        self.key_left = False
+        self.key_right = False
 
-bullets = []
-remaining_bullets = []
-enemies = []
-score = 0
-life = 100
+        self.running = True
 
-player = Player(( SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-enemy_path = [(100, 100), (200, 200), (300, 300)]
-enemy = Enemy(enemy_path)
-enemies.append(enemy)
+    def check_bullet_collisions(self,bullets, enemy):
+        for bullet in bullets:
+            if enemy.rect.colliderect(bullet.rect):
+                enemy.health -= 50
+                bullets.remove(bullet)
+                if enemy.health <= 0:
+                    if enemy in self.enemies:
+                        self.enemies.remove(enemy)
+                        return True
+        return False
 
-key_up = False
-key_down = False
-key_left = False
-key_right = False
+    def check_collision(self, player, enemy):
+        return player.rect.colliderect(enemy.rect)     
 
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
-                key_up = True
-            elif event.key == pygame.K_DOWN:
-                key_down = True
-            elif event.key == pygame.K_LEFT:
-                key_left = True
-            elif event.key == pygame.K_RIGHT:
-                key_right = True
-            elif event.key == pygame.K_SPACE:
-                player.shoot()
-        elif event.type == pygame.KEYUP:
-            if event.key == pygame.K_UP:
-                key_up = False
-            elif event.key == pygame.K_DOWN:
-                key_down = False
-            elif event.key == pygame.K_LEFT:
-                key_left = False
-            elif event.key == pygame.K_RIGHT:
-                key_right = False
+    def create_enemy(self):
+        # ramdon generate 3 valid enemy paths
+        enemy_paths = []
+        for i in range(3):
+            x = random.randint(0, self.SCREEN_WIDTH)
+            y = random.randint(0, self.SCREEN_HEIGHT)
+            enemy_paths.append([x,y])
+        new_enemy = Enemy(self.enemy_path)
+        
+        # Add the new enemy to the enemies list
+        self.enemies.append(new_enemy)
 
-    # Game logic updates
-    # Clear screen with black background
-    screen.fill((0, 0, 0))  
+    def run(self):
+        while self.running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP:
+                        key_up = True
+                    elif event.key == pygame.K_DOWN:
+                        key_down = True
+                    elif event.key == pygame.K_LEFT:
+                        key_left = True
+                    elif event.key == pygame.K_RIGHT:
+                        key_right = True
+                    elif event.key == pygame.K_SPACE:
+                        self.player.shoot()
+                elif event.type == pygame.KEYUP:
+                    if event.key == pygame.K_UP:
+                        key_up = False
+                    elif event.key == pygame.K_DOWN:
+                        key_down = False
+                    elif event.key == pygame.K_LEFT:
+                        key_left = False
+                    elif event.key == pygame.K_RIGHT:
+                        key_right = False
 
-    # Move the player based on key states
-    if key_up:
-        player.move("UP")
-    if key_down:
-        player.move("DOWN")
-    if key_left:
-        player.move("LEFT")
-    if key_right:
-        player.move("RIGHT")
+            # Game logic updates
+            # Clear screen with black background
+            self.screen.fill((0, 0, 0))  
 
-    # Bullets move and draw
-    for bullet in player.bullets[:]:
-        bullet.move()
-        if bullet.pos[0] < 0 or bullet.pos[0] > SCREEN_WIDTH or bullet.pos[1] < 0 or bullet.pos[1] > SCREEN_HEIGHT:
-            player.bullets.remove(bullet)  # Remove the bullet if it's out of bounds
-            continue  # Skip the rest of the loop for this bullet
-        bullet.draw(screen) 
-        for enemy in enemies[:]:
-            if check_bullet_collisions(player.bullets, enemy):
-                score += 10
-                # ramon 1/9 chances creates 2 enmies
-                if random.randint(1, 9) == 1:
-                    create_enemy()
-                create_enemy()
+            # Move the player based on key states
+            if self.key_up:
+                self.player.move("UP")
+            if self.key_down:
+                self.player.move("DOWN")
+            if self.key_left:
+                self.player.move("LEFT")
+            if self.key_right:
+                self.player.move("RIGHT")
 
-    # Draw the enemy and player
-    for enemy in enemies:
-        enemy.move()
-        enemy.draw(screen)
-        if check_collision(player, enemy):
-            life -= 1
-            if life <= 0:
-                game_over_text = font.render('Game Over', True, (255, 0, 0))
-                screen.blit(game_over_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
-                pygame.display.update()
-                pygame.time.wait(2000)
-                running = False
-                break  
-    player.draw(screen)
+            # Bullets move and draw
+            for bullet in self.player.bullets[:]:
+                bullet.move()
+                if bullet.pos[0] < 0 or bullet.pos[0] > self.SCREEN_WIDTH or bullet.pos[1] < 0 or bullet.pos[1] > SCREEN_HEIGHT:
+                    self.player.bullets.remove(bullet)  # Remove the bullet if it's out of bounds
+                    continue  # Skip the rest of the loop for this bullet
+                bullet.draw(self.screen) 
+                for enemy in self.enemies[:]:
+                    if self.check_bullet_collisions(self,self.player.bullets, enemy):
+                        score += 10
+                        # ramon 1/9 chances creates 2 enmies
+                        if random.randint(1, 9) == 1:
+                            self.create_enemy()
+                        self.create_enemy()
 
-    # Display the score
-    font = pygame.font.Font(None, 36)
-    text = font.render(f'Score: {score}', True, (255, 255, 255))
-    screen.blit(text, (10, 10))
+            # Draw the enemy and player
+            for enemy in self.enemies:
+                enemy.move()
+                enemy.draw(self.screen)
+                if self.check_collision(self.player, enemy):
+                    self.life -= 1
+                    if self.life <= 0:
+                        game_over_text = font.render('Game Over', True, (255, 0, 0))
+                        self.screen.blit(game_over_text, (self.SCREEN_WIDTH // 2 - 100, self.SCREEN_HEIGHT // 2))
+                        self.pygame.display.update()
+                        self.pygame.time.wait(2000)
+                        self.running = False
+                        break  
+            self.player.draw(self.screen)
 
-    # Display the life
-    font = pygame.font.Font(None, 36)
-    text = font.render(f'Life: {life}', True, (0, 255, 0))
-    screen.blit(text, (680, 10))
+            # Display the score
+            font = pygame.font.Font(None, 36)
+            text = font.render(f'Score: {self.score}', True, (255, 255, 255))
+            self.screen.blit(text, (10, 10))
 
-    # Game Render
-    pygame.display.flip()
-    clock.tick(60)
+            # Display the life
+            font = pygame.font.Font(None, 36)
+            text = font.render(f'Life: {self.life}', True, (0, 255, 0))
+            self.screen.blit(text, (680, 10))
 
-pygame.quit()
-sys.exit()
+            # Game Render
+            self.pygame.display.flip()
+            self.clock.tick(60)
+
+        self.pygame.quit()
+        sys.exit()
+
+if __name__ == "__main__":
+    game = Game()
+    game.run()
