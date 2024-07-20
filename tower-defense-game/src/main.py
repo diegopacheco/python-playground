@@ -155,14 +155,7 @@ while running:
             continue  # Skip the rest of the loop for this bullet
         bullet.draw(screen) 
         for enemy in enemies[:]:
-            if check_bullet_collisions([bullet], enemy):
-                enemies.remove(enemy)
-                player.bullets.remove(bullet)
-                break
-
-    # Draw remaining enemies
-    for enemy in enemies:
-        enemy.draw(screen)
+            check_bullet_collisions(player.bullets, enemy)
 
     # Move the player based on key states
     if key_up:
@@ -175,8 +168,9 @@ while running:
         player.move("RIGHT")
 
     # Draw the enemy and player
-    enemy.move()  
-    enemy.draw(screen) 
+    for enemy in enemies:
+        enemy.move()
+        enemy.draw(screen)
     player.draw(screen)
     
     # Game Update
