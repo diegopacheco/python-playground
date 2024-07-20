@@ -32,13 +32,17 @@ class Enemy:
 
 class Player:
     def __init__(self, pos):
-        self.pos = pos
+        #self.pos = pos
+        self.pos = [100, 100]
         self.size = 30
         self.color = (0, 0, 255)
         self.bullets = []
 
     def draw(self, screen):
+        #pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
         pygame.draw.rect(screen, self.color, (self.pos[0], self.pos[1], self.size, self.size))
+        for bullet in self.bullets:  # Draw each bullet
+            bullet.draw(screen)
 
     def move(self, direction):
         if direction == "UP":
@@ -55,20 +59,25 @@ class Player:
         self.pos = new_pos
     
     def shoot(self):
-        new_bullet = Bullet(self.pos)
-        bullets.append(new_bullet)
+        new_bullet = Bullet(self.pos[0] + self.size // 2, self.pos[1])
+        self.bullets.append(new_bullet)
 
 class Bullet:
-    def __init__(self, pos):
-        self.pos = pos
-        self.speed = 10
-        self.radius = 5
+    def __init__(self, x, y):
+        self.pos = [x, y]
+        self.radius = 5 
 
     def move(self):
-        self.pos = (self.pos[0], self.pos[1] - self.speed)
+        self.pos[1] -= 10
 
     def draw(self, screen):
         pygame.draw.circle(screen, (0, 255, 0), self.pos, self.radius)
+
+
+# Check if rectangles overlap
+def check_collision(pos1, size1, pos2, size2):
+    return (pos1[0] < pos2[0] + size2 and pos1[0] + size1 > pos2[0] and
+            pos1[1] < pos2[1] + size2 and pos1[1] + size1 > pos2[1])
 
 pygame.init()
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
@@ -78,10 +87,13 @@ ENEMY_PATH = [(100, 100), (700, 100), (700, 500), (100, 500)]
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 clock = pygame.time.Clock()
 
+bullets = []
+enemies = []
+
 player = Player((50, 50))
 enemy_path = [(100, 100), (200, 200), (300, 300)]  # Example path
 enemy = Enemy(enemy_path)
-bullets = []
+enemies.append(enemy)
 
 key_up = False
 key_down = False
@@ -118,12 +130,18 @@ while running:
     # Clear screen with black background
     screen.fill((0, 0, 0))  
 
-    for bullet in bullets[:]:
+    for bullet in player.bullets[:]:
         bullet.move()
-        bullet.draw(screen)
-        # Remove bullets that go off-screen
-        if bullet.pos[1] < -10:
-            bullets.remove(bullet)
+        if bullet.pos[0] < 0 or bullet.pos[0] > SCREEN_WIDTH or bullet.pos[1] < 0 or bullet.pos[1] > SCREEN_HEIGHT:
+            player.bullets.remove(bullet)  # Remove the bullet if it's out of bounds
+            continue  # Skip the rest of the loop for this bullet
+        else:
+            bullet.draw(screen) 
+        for enemy in enemies[:]:  # Iterate over a copy of the enemies list
+            if check_collision(bullet.pos, bullet.radius, enemy.pos, enemy.size):
+                player.bullets.remove(bullet)  # Remove the bullet upon collision
+                enemies.remove(enemy)  # Remove the enemy
+                break  # Exit the loop to avoid checking other enemies with this bullet
 
     # Move the player based on key states
     if key_up:
