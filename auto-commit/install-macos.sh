@@ -3,6 +3,12 @@
 REPO_BASE=~/Documents/git/diegopacheco
 SCRIPT_PATH=/Users/diegopacheco/Documents/git/diegopacheco/python-playground/auto-commit/auto-commit.sh
 PLIST_PATH=~/Library/LaunchAgents/com.autocommit.plist
+LOG_FILE=~/auto-commit.log
+
+echo "Cleaning up previous log file..."
+echo "" > "$LOG_FILE"
+echo "Log file cleaned: $LOG_FILE"
+echo ""
 
 echo "Available repositories:"
 echo ""
@@ -69,4 +75,24 @@ echo "Background job installed successfully!"
 echo "Repository: $SELECTED_REPO"
 echo "Schedule: Daily at 00:10"
 echo ""
-echo "Check status with: launchctl list | grep autocommit"
+
+echo "Background process status:"
+launchctl list | grep autocommit
+echo ""
+
+CURRENT_HOUR=$(date +%H)
+CURRENT_MINUTE=$(date +%M)
+if [ "$CURRENT_HOUR" -lt 0 ] || ( [ "$CURRENT_HOUR" -eq 0 ] && [ "$CURRENT_MINUTE" -lt 10 ] ); then
+    NEXT_RUN=$(date +"%Y-%m-%d 00:10:00")
+else
+    NEXT_RUN=$(date -v+1d +"%Y-%m-%d 00:10:00")
+fi
+echo "Next scheduled run: $NEXT_RUN"
+echo ""
+
+if [ -f "$LOG_FILE" ]; then
+    echo "Current logs from $LOG_FILE:"
+    cat "$LOG_FILE"
+else
+    echo "No logs yet in $LOG_FILE"
+fi
