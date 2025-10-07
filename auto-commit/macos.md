@@ -19,8 +19,8 @@ Add the following configuration:
     <string>com.autocommit</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/diegopacheco/Documents/git/diegopacheco/python-playground/auto-commit/auto-commit.sh</string>
-        <string>/Users/diegopacheco/Documents/git/diegopacheco/php-playground/</string>
+        <string>/Users/diegopacheco/git/diegopacheco/python-playground/auto-commit/auto-commit.sh</string>
+        <string>/Users/diegopacheco/git/diegopacheco/php-playground/</string>
     </array>
     <key>StartCalendarInterval</key>
     <dict>
@@ -63,7 +63,7 @@ crontab -e
 
 Add this line:
 ```bash
-10 0 * * * /Users/diegopacheco/Documents/git/diegopacheco/python-playground/auto-commit/auto-commit.sh /Users/diegopacheco/Documents/git/diegopacheco/php-playground/ >> /Users/diegopacheco/auto-commit.log 2>&1
+10 0 * * * /Users/diegopacheco/git/diegopacheco/python-playground/auto-commit/auto-commit.sh /Users/diegopacheco/git/diegopacheco/php-playground/ >> /Users/diegopacheco/auto-commit.log 2>&1
 ```
 
 List cron jobs:

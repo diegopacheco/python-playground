@@ -6,7 +6,7 @@ if [ $# -eq 0 ]; then
 fi
 
 PYTHON=/usr/bin/python3
-SCRIPT_DIR=/Users/diegopacheco/Documents/git/diegopacheco/python-playground/auto-commit
+SCRIPT_DIR=/Users/diegopacheco/git/diegopacheco/python-playground/auto-commit
 SCRIPT=$SCRIPT_DIR/auto-commit.py
 
 $PYTHON $SCRIPT "$@"

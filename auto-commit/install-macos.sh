@@ -1,7 +1,7 @@
 #!/bin/bash
 
-REPO_BASE=~/Documents/git/diegopacheco
-SCRIPT_PATH=/Users/diegopacheco/Documents/git/diegopacheco/python-playground/auto-commit/auto-commit.sh
+REPO_BASE=~/git/diegopacheco
+SCRIPT_PATH=/Users/diegopacheco/git/diegopacheco/python-playground/auto-commit/auto-commit.sh
 PLIST_PATH=~/Library/LaunchAgents/com.autocommit.plist
 LOG_FILE=/Users/diegopacheco/auto-commit.log
 
