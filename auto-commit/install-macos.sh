@@ -50,7 +50,7 @@ if [ -f "$PLIST_PATH" ]; then
     launchctl unload "$PLIST_PATH" 2>/dev/null
 fi
 
-echo "Creating LaunchAgent plist..."
+echo "Creating LaunchAgent plist at: $(eval echo $PLIST_PATH)"
 cat > "$PLIST_PATH" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -109,7 +109,8 @@ else
 fi
 echo ""
 
-echo "Configuration file:"
+echo "Configuration file at: $(eval echo $PLIST_PATH)"
+echo ""
 echo '```xml' > /tmp/plist_display.md
 cat "$PLIST_PATH" >> /tmp/plist_display.md
 echo '```' >> /tmp/plist_display.md
