@@ -3,7 +3,7 @@
 REPO_BASE=~/Documents/git/diegopacheco
 SCRIPT_PATH=/Users/diegopacheco/Documents/git/diegopacheco/python-playground/auto-commit/auto-commit.sh
 PLIST_PATH=~/Library/LaunchAgents/com.autocommit.plist
-LOG_FILE=~/auto-commit.log
+LOG_FILE=/Users/diegopacheco/auto-commit.log
 
 echo "Cleaning up previous log file..."
 echo "" > "$LOG_FILE"
@@ -71,9 +71,9 @@ cat > "$PLIST_PATH" << EOF
         <integer>10</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/diegopacheco/auto-commit-stdout.log</string>
+    <string>$LOG_FILE</string>
     <key>StandardErrorPath</key>
-    <string>/Users/diegopacheco/auto-commit-stderr.log</string>
+    <string>$LOG_FILE</string>
 </dict>
 </plist>
 EOF
@@ -107,3 +107,11 @@ if [ -f "$LOG_FILE" ]; then
 else
     echo "No logs yet in $LOG_FILE"
 fi
+echo ""
+
+echo "Configuration file:"
+echo '```xml' > /tmp/plist_display.md
+cat "$PLIST_PATH" >> /tmp/plist_display.md
+echo '```' >> /tmp/plist_display.md
+glow /tmp/plist_display.md
+rm /tmp/plist_display.md
