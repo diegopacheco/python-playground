@@ -19,8 +19,9 @@ for dir in "$REPO_BASE"/*; do
         cd "$dir"
         status=$(git status --porcelain 2>/dev/null)
         if [ -n "$status" ]; then
+            change_count=$(echo "$status" | wc -l | xargs)
             repos+=("$dir")
-            echo "$counter) $(basename "$dir")"
+            echo "$counter) $(basename "$dir") [$change_count changes]"
             ((counter++))
         fi
     fi
