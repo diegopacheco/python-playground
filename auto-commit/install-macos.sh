@@ -10,17 +10,27 @@ echo "" > "$LOG_FILE"
 echo "Log file cleaned: $LOG_FILE"
 echo ""
 
-echo "Available repositories:"
+echo "Scanning repositories with uncommitted files..."
 echo ""
 repos=()
 counter=1
 for dir in "$REPO_BASE"/*; do
-    if [ -d "$dir" ]; then
-        repos+=("$dir")
-        echo "$counter) $(basename "$dir")"
-        ((counter++))
+    if [ -d "$dir/.git" ]; then
+        cd "$dir"
+        status=$(git status --porcelain 2>/dev/null)
+        if [ -n "$status" ]; then
+            repos+=("$dir")
+            echo "$counter) $(basename "$dir")"
+            ((counter++))
+        fi
     fi
 done
+cd - > /dev/null
+
+if [ ${#repos[@]} -eq 0 ]; then
+    echo "No repositories with uncommitted files found."
+    exit 0
+fi
 echo ""
 read -p "Select repository number: " selection
 
