@@ -1,0 +1,14 @@
+{
+  "template": "https://github.com/hyperflask/hyperflask-start",
+  "commit": "b46a42b1ebf7541046c17c94b0164f9d7f312f43",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "project_name": "hyper-flask-app",
+      "project_slug": "hyper_flask_app",
+      "_template": "https://github.com/hyperflask/hyperflask-start",
+      "_commit": "b46a42b1ebf7541046c17c94b0164f9d7f312f43"
+    }
+  },
+  "directory": null
+}

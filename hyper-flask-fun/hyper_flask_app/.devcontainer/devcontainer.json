@@ -1,0 +1,27 @@
+{
+  "name": "hyper-flask-app",
+  "dockerComposeFile": "docker-compose.yml",
+  "remoteUser": "pn",
+  "service": "app",
+  "forwardPorts": [5000, 7878],
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "uv sync && npm install",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+				"ms-python.python",
+        "hyperflask.jinjapy-language-support",
+        "hyperflask.sqlorm-language-support"
+      ],
+      "settings": {
+				"python.defaultInterpreterPath": "/workspace/.venv/bin/python",
+        "python.testing.pytestEnabled": true
+			}
+    }
+  }
+}
