@@ -1,0 +1,19 @@
+python-crash-course.html
+  s_5b9f717efdc5af::t_e1c211b9a15264 241,258-259,262-263,265-266,268,287,289,381,399-400,402-403,405-406,408,433,445,473,482,484,494,500-501,512,520-521,533,537,539-543,550-551,553,556-557,559,561,579,615,619,655-660,663,718-722
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "fff2ecbe7777b2241ad7550c5d1a36351e75201f",
+  "prompts": {},
+  "sessions": {
+    "s_5b9f717efdc5af": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c67-458f-7991-acde-bcb7ab1f7545",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
