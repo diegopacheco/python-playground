@@ -7,3 +7,7 @@ capitals = {
     "Argentina": "Buenos Aires",
 }
 print(capitals)
+
+print(capitals.get("Brazil"))
+print(capitals.get("Uruguay", "Montevideo"))
+print(capitals["Usa"])
