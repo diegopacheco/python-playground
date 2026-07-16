@@ -1,0 +1,19 @@
+bag-of-cats/sumtwo.py
+  s_5b9f717efdc5af::t_2ad3cdf2a32def 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a32d41aabbd88f30189f6e5bf6c3abdfc81f062a",
+  "prompts": {},
+  "sessions": {
+    "s_5b9f717efdc5af": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c67-458f-7991-acde-bcb7ab1f7545",
+        "model": "unknown"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
