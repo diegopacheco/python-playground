@@ -1,0 +1,213 @@
+python-essentials-flask-rest/src/main.py
+  s_01783e3537140f::t_ec3f8aad70d7c5 1-57
+python-essentials-sqlalchemy/README.md
+  s_01783e3537140f::t_02fb6993613cb1 1-35
+python-essentials-idiomatic/README.md
+  s_01783e3537140f::t_b4ed2478f035bf 1-24
+python-essentials-json/src/main.py
+  s_01783e3537140f::t_64ebb940794d62 1-46
+python-essentials-mysql-pool/start.sh
+  s_01783e3537140f::t_a739e8f4bc8081 1-8
+python-essentials-hidden-gems/src/main.py
+  s_01783e3537140f::t_9c8df7201220cb 1-58
+python-essentials-pii-aes/requirements.txt
+  s_01783e3537140f::t_4941308f7fcdc1 1
+python-essentials-django/src/main.py
+  s_01783e3537140f::t_322157efd18fa8 1-45
+python-essentials-temporal/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-pii-aes/src/main.py
+  s_01783e3537140f::t_f984206e54fe1d 1-56
+python-essentials-functional/src/main.py
+  s_01783e3537140f::t_ace01074b1b727 1-61
+python-essentials-semaphores/README.md
+  s_01783e3537140f::t_a826442df1b2c2 1-21
+python-essentials-json/README.md
+  s_01783e3537140f::t_18829a70972823 1-31
+python-essentials-django/test.sh
+  s_01783e3537140f::t_e7eccb411081d6 1-20
+python-essentials-jwt/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-requests/README.md
+  s_01783e3537140f::t_9a1bed1e74a15e 1-29
+python-essentials-sqlalchemy/src/main.py
+  s_01783e3537140f::t_b12c92fe5083d5 1-59
+python-essentials-temporal/README.md
+  s_01783e3537140f::t_46cb60f0114cb8 1-31
+python-essentials-json/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-jwt/src/main.py
+  s_01783e3537140f::t_44377f9d7ed505 1-61
+python-essentials-threads/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-functional/README.md
+  s_01783e3537140f::t_e9a007fe104997 1-23
+python-essentials-types/requirements.txt
+  s_01783e3537140f::t_1784f5b70ac465 1
+python-essentials-mysql-pool/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-mysql-pool/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-temporal/src/main.py
+  s_01783e3537140f::t_e2948b14094a88 1-52
+python-essentials-slices/src/main.py
+  s_01783e3537140f::t_1f6cca6ec5ae2e 1-43
+python-essentials-mysql-pool/test.sh
+  s_01783e3537140f::t_c3154b173a4724 1-5
+python-essentials-postgres-pool/test.sh
+  s_01783e3537140f::t_c06d48e18019fc 1-5
+python-essentials-mysql-pool/src/main.py
+  s_01783e3537140f::t_78afca6f9b4028 1-48
+python-essentials-mysql-pool/requirements.txt
+  s_01783e3537140f::t_daf0f9c6d28a82 1
+python-essentials-idiomatic/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-pii-aes/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-pii-aes/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python_crash_course.html
+  s_d76d15cb95d97e::t_c90345ff3e636b 14-15,26,33-34,41,51,53-60,64-66,76-78,82,87,91,98,101,103,107,110,112,115-120,130-131,138,141,143,147,640-644,649
+  s_d76d15cb95d97e::t_fc71184bf9d231 6,163,166,557,622
+python-essentials-functional/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-postgres-pool/src/main.py
+  s_01783e3537140f::t_e9fab54a9f093c 1-49
+python-essentials-basics/src/main.py
+  s_01783e3537140f::t_588e4fa3bc43a0 1-68
+python-essentials-mysql-pool/docker-compose.yml
+  s_01783e3537140f::t_26ce92bfd18bb5 1-8
+python-essentials-airflow/requirements.txt
+  s_01783e3537140f::t_0b9b3549fadb95 1
+python-essentials-requests/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-requests/requirements.txt
+  s_01783e3537140f::t_1c8c6dd8b26a04 1
+python-essentials-semaphores/src/main.py
+  s_01783e3537140f::t_e5946f6bbd53da 1-69
+python-essentials-django/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-postgres-pool/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-requests/src/main.py
+  s_01783e3537140f::t_6a4647ce7081a6 1-44
+python-essentials-postgres-pool/README.md
+  s_01783e3537140f::t_4963a4cd9ee75d 1-30
+python-essentials-streamlit/README.md
+  s_01783e3537140f::t_1189877d4deabd 1-25
+python-essentials-django/requirements.txt
+  s_01783e3537140f::t_066ce8dc98d5d0 1
+python-essentials-basics/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-mysql-pool/README.md
+  s_01783e3537140f::t_ce28a3878356a6 1-30
+python-essentials-postgres-pool/docker-compose.yml
+  s_01783e3537140f::t_10f52bed1ae7aa 1-8
+python-essentials-sqlalchemy/requirements.txt
+  s_01783e3537140f::t_f783d5a3f867eb 1
+python-essentials-types/src/main.py
+  s_01783e3537140f::t_3dab90e56904d0 1-75
+python-essentials-airflow/README.md
+  s_01783e3537140f::t_aeffba4994f5a7 1-29
+python-essentials-basics/README.md
+  s_01783e3537140f::t_e14f17563c5661 1-27
+python-essentials-postgres-pool/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-postgres-pool/start.sh
+  s_01783e3537140f::t_3c5854a3b2f5ba 1-8
+python-essentials-jwt/README.md
+  s_01783e3537140f::t_3840ed70c0bc35 1-22
+python-essentials-postgres-pool/requirements.txt
+  s_01783e3537140f::t_c617f8bf6fc8eb 1
+python-essentials-flask-rest/requirements.txt
+  s_01783e3537140f::t_1b1aa83d48eca6 1
+python-essentials-flask-rest/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-slices/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-postgres-pool/stop.sh
+  s_01783e3537140f::t_cd3e99e7182a8c 1-3
+python-essentials-hidden-gems/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-types/README.md
+  s_01783e3537140f::t_75812722a7063f 1-23
+python-essentials-airflow/run.sh
+  s_01783e3537140f::t_50d0bb0b68610f 1-7
+python-essentials-streamlit/src/main.py
+  s_01783e3537140f::t_55ce43ba2ef279 1-27
+python-essentials-streamlit/run.sh
+  s_01783e3537140f::t_c875d66b0ecc70 1-3
+python-essentials-sqlalchemy/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-hidden-gems/README.md
+  s_01783e3537140f::t_a3cbc7311d3ee1 1-24
+python-essentials-pii-aes/README.md
+  s_01783e3537140f::t_5718ce2c392c22 1-32
+python-essentials-temporal/requirements.txt
+  s_01783e3537140f::t_b5a2a238df347b 1
+python-essentials-mysql-pool/stop.sh
+  s_01783e3537140f::t_3bd3913b4b9d16 1-3
+python-essentials-streamlit/requirements.txt
+  s_01783e3537140f::t_fbcfb3395a3335 1-2
+python-essentials-streamlit/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-django/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-flask-rest/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-airflow/src/dag.py
+  s_01783e3537140f::t_21dd469b920797 1-34
+python-essentials-requests/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-slices/README.md
+  s_01783e3537140f::t_49710993363d5c 1-22
+python-essentials-types/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-temporal/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-flask-rest/README.md
+  s_01783e3537140f::t_7ef2e4a766bca2 1-38
+python-essentials-threads/README.md
+  s_01783e3537140f::t_4922f29614550c 1-23
+python-essentials-airflow/install-deps.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-threads/src/main.py
+  s_01783e3537140f::t_aa786d9292a3e7 1-85
+python-essentials-semaphores/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-flask-rest/test.sh
+  s_01783e3537140f::t_0d480c527aab2e 1-29
+python-essentials-sqlalchemy/run.sh
+  s_01783e3537140f::t_f82934094b1b65 1-3
+python-essentials-django/README.md
+  s_01783e3537140f::t_330f317ec152c9 1-35
+python-essentials-idiomatic/src/main.py
+  s_01783e3537140f::t_a1481a05c4a0c7 1-17,20-59
+  s_01783e3537140f::t_3bb3d13fe87653 18-19
+python-essentials-types/install-deps.sh
+  s_01783e3537140f::t_53b95075ab3038 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "881571aa3c56f61fa21ac58e2bcb0c0aea2b21d3",
+  "prompts": {},
+  "sessions": {
+    "s_01783e3537140f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30730713-b22f-4a28-9b2b-9880b082f35a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    },
+    "s_d76d15cb95d97e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c48-b9a2-79c3-a7fe-daad4c407ad3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
