@@ -1,0 +1,19 @@
+python-crash-course.html
+  s_5c3e1887ed1b69::t_433587d3730df5 1-720
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "7ea54b5f99c67d690fcc25402d632a9a43c22967",
+  "prompts": {},
+  "sessions": {
+    "s_5c3e1887ed1b69": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c4d-1403-7620-8d6e-7dcbf6ad8835",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
