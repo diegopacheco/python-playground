@@ -238,7 +238,7 @@
 <div id="basics">
 <h2>1. Language Basics</h2>
 
-<h3>Variables & Types</h3>
+<h3>Variables &amp; Types</h3>
 <div class="code-block"><code>x = <span class="number">10</span>
 y = <span class="number">3.14</span>
 name = <span class="string">"Alice"</span>
@@ -255,11 +255,17 @@ a, b = b, a
     <span class="method">print</span>(n)</code></div>
 
 <h3>Control Flow</h3>
-<div class="code-block"><code>status = <span class="string">"adult"</span> <span class="keyword">if</span> age >= <span class="number">18</span> <span class="keyword">else</span> <span class="string">"minor"</span>
+<div class="code-block"><code>age = <span class="number">20</span>
+status = <span class="string">"adult"</span> <span class="keyword">if</span> age >= <span class="number">18</span> <span class="keyword">else</span> <span class="string">"minor"</span>
 
 <span class="keyword">for</span> i <span class="keyword">in</span> <span class="method">range</span>(<span class="number">5</span>):
+    <span class="method">print</span>(i)
+
 <span class="keyword">for</span> i <span class="keyword">in</span> <span class="method">range</span>(<span class="number">1</span>, <span class="number">6</span>):
+    <span class="method">print</span>(i)
+
 <span class="keyword">for</span> i <span class="keyword">in</span> <span class="method">range</span>(<span class="number">0</span>, <span class="number">10</span>, <span class="number">2</span>):
+    <span class="method">print</span>(i)
 
 <span class="keyword">for</span> idx, val <span class="keyword">in</span> <span class="method">enumerate</span>([<span class="string">'a'</span>, <span class="string">'b'</span>, <span class="string">'c'</span>]):
     <span class="method">print</span>(idx, val)
@@ -278,9 +284,9 @@ evens = [x <span class="keyword">for</span> x <span class="keyword">in</span> <s
 <table>
 <tr><th>Structure</th><th>Syntax</th><th>Use Case</th><th>Key Ops</th></tr>
 <tr><td>List</td><td><code>[1, 2, 3]</code></td><td>Ordered, mutable sequence</td><td class="complexity">O(1) append, O(n) search</td></tr>
-<tr><td>Tuple</td><td><code>(1, 2, 3)</code></td><td>Immutable, hashable</td><td>Dict keys, return multiple values</td></tr>
+<tr><td>Tuple</td><td><code>(1, 2, 3)</code></td><td>Immutable; hashable when its elements are hashable</td><td>Dict keys, return multiple values</td></tr>
 <tr><td>Dict</td><td><code>{'a': 1}</code></td><td>Key-value mapping</td><td class="complexity">O(1) avg lookup/insert</td></tr>
-<tr><td>Set</td><td><code>{1, 2, 3}</code></td><td>Unique elements, set ops</td><td class="complexity">O(1) membership test</td></tr>
+<tr><td>Set</td><td><code>{1, 2, 3}</code></td><td>Unique elements, set ops</td><td class="complexity">O(1) avg membership test</td></tr>
 <tr><td>Deque</td><td><code>deque()</code></td><td>Double-ended queue</td><td class="complexity">O(1) both ends</td></tr>
 <tr><td>Heap</td><td><code>heapq</code></td><td>Priority queue</td><td class="complexity">O(log n) push/pop min</td></tr>
 </table>
@@ -372,7 +378,7 @@ deep = copy.<span class="method">deepcopy</span>(matrix)</code></div>
 </div>
 
 <div id="dicts">
-<h2>5. Dictionaries & Sets</h2>
+<h2>5. Dictionaries &amp; Sets</h2>
 
 <h3>Dictionaries</h3>
 <div class="code-block"><code>d = {<span class="string">"a"</span>: <span class="number">1</span>, <span class="string">"b"</span>: <span class="number">2</span>}
@@ -390,9 +396,16 @@ d.<span class="method">setdefault</span>(<span class="string">"c"</span>, <span 
 <span class="number">1</span> <span class="keyword">in</span> d.<span class="method">values</span>()
 
 <span class="keyword">for</span> key <span class="keyword">in</span> d:
+    <span class="method">print</span>(key)
+
 <span class="keyword">for</span> key <span class="keyword">in</span> d.<span class="method">keys</span>():
+    <span class="method">print</span>(key)
+
 <span class="keyword">for</span> val <span class="keyword">in</span> d.<span class="method">values</span>():
+    <span class="method">print</span>(val)
+
 <span class="keyword">for</span> k, v <span class="keyword">in</span> d.<span class="method">items</span>():
+    <span class="method">print</span>(k, v)
 
 d1 = {<span class="string">"a"</span>: <span class="number">1</span>}
 d2 = {<span class="string">"b"</span>: <span class="number">2</span>}
@@ -417,7 +430,7 @@ a = {<span class="number">1</span>, <span class="number">2</span>, <span class="
 b = {<span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>}
 
 a | b
-a & b
+a &amp; b
 a - b
 a ^ b
 
@@ -429,7 +442,7 @@ a ^ b
 </div>
 
 <div id="functions">
-<h2>6. Functions & Lambdas</h2>
+<h2>6. Functions &amp; Lambdas</h2>
 
 <div class="code-block"><code><span class="keyword">def</span> <span class="method">greet</span>(name, greeting=<span class="string">"Hello"</span>):
     <span class="keyword">return</span> <span class="method">f</span><span class="string">"{greeting}, {name}!"</span>
@@ -457,7 +470,7 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
 [x <span class="keyword">for</span> x <span class="keyword">in</span> [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>] <span class="keyword">if</span> x><span class="number">1</span>]</code></div>
 
 <div class="warning">Default mutable arguments are evaluated ONCE at definition time:
-<code>def bad(x, arr=[]): arr.append(x); return arr</code> — arr keeps growing across calls! Use <code>def good(x, arr=None): if arr is None: arr = []</code> instead.</div>
+<code>def bad(x, arr=[]): arr.append(x); return arr</code> — arr keeps growing across calls! Use <code>def good(x, arr=None): arr = [] if arr is None else arr; arr.append(x); return arr</code> instead.</div>
 </div>
 
 <div id="oop">
@@ -466,9 +479,9 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
 <div class="code-block"><code><span class="keyword">class</span> <span class="method">Node</span>:
     count = <span class="number">0</span>
 
-    <span class="keyword">def</span> <span class="method">__init__</span>(self, val=<span class="number">0</span>, next=<span class="keyword">None</span>):
+    <span class="keyword">def</span> <span class="method">__init__</span>(self, val=<span class="number">0</span>, next_node=<span class="keyword">None</span>):
         self.val = val
-        self.next = next
+        self.next = next_node
         Node.count += <span class="number">1</span>
 
     <span class="keyword">def</span> <span class="method">__str__</span>(self):
@@ -478,12 +491,14 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
         <span class="keyword">return</span> <span class="method">f</span><span class="string">"Node({self.val})"</span>
 
     <span class="keyword">def</span> <span class="method">__lt__</span>(self, other):
-        <span class="keyword">return</span> self.val < other.val
+        <span class="keyword">return</span> self.val &lt; other.val
 
     <span class="keyword">def</span> <span class="method">__hash__</span>(self):
         <span class="keyword">return</span> <span class="method">hash</span>(self.val)
 
     <span class="keyword">def</span> <span class="method">__eq__</span>(self, other):
+        <span class="keyword">if</span> <span class="keyword">not</span> <span class="method">isinstance</span>(other, Node):
+            <span class="keyword">return</span> <span class="keyword">NotImplemented</span>
         <span class="keyword">return</span> self.val == other.val
 
 <span class="keyword">class</span> <span class="method">TreeNode</span>(Node):
@@ -494,7 +509,7 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
 
 <span class="keyword">class</span> <span class="method">Circle</span>:
     <span class="keyword">def</span> <span class="method">__init__</span>(self, radius):
-        self._radius = radius
+        self.radius = radius
 
     <span class="method">@property</span>
     <span class="keyword">def</span> <span class="method">radius</span>(self):
@@ -502,8 +517,8 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
 
     <span class="method">@radius.setter</span>
     <span class="keyword">def</span> <span class="method">radius</span>(self, value):
-        <span class="keyword">if</span> value < <span class="number">0</span>:
-            <span class="keyword">raise</span> ValueError(<span class="string">"Radius must be positive"</span>)
+        <span class="keyword">if</span> value &lt; <span class="number">0</span>:
+            <span class="keyword">raise</span> ValueError(<span class="string">"Radius must be non-negative"</span>)
         self._radius = value
 
     <span class="method">@property</span>
@@ -515,32 +530,35 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
 </div>
 
 <div id="algorithms">
-<h2>8. Common Algorithms & Patterns</h2>
+<h2>8. Common Algorithms &amp; Patterns</h2>
 
 <h3>Two Pointers</h3>
 <div class="code-block"><code><span class="keyword">def</span> <span class="method">two_sum</span>(arr, target):
+    indexed = <span class="method">sorted</span>(<span class="method">enumerate</span>(arr), key=<span class="keyword">lambda</span> item: item[<span class="number">1</span>])
     left, right = <span class="number">0</span>, <span class="method">len</span>(arr) - <span class="number">1</span>
-    <span class="keyword">while</span> left <= right:
-        s = arr[left] + arr[right]
-        <span class="keyword">if</span> s == target:
-            <span class="keyword">return</span> [left, right]
-        <span class="keyword">elif</span> s < target:
+    <span class="keyword">while</span> left &lt; right:
+        total = indexed[left][<span class="number">1</span>] + indexed[right][<span class="number">1</span>]
+        <span class="keyword">if</span> total == target:
+            <span class="keyword">return</span> [indexed[left][<span class="number">0</span>], indexed[right][<span class="number">0</span>]]
+        <span class="keyword">elif</span> total &lt; target:
             left += <span class="number">1</span>
         <span class="keyword">else</span>:
             right -= <span class="number">1</span>
     <span class="keyword">return</span> [<span class="number">-1</span>, <span class="number">-1</span>]
 
 <span class="keyword">def</span> <span class="method">max_sum</span>(arr, k):
+    <span class="keyword">if</span> k &lt;= <span class="number">0</span> <span class="keyword">or</span> k > <span class="method">len</span>(arr):
+        <span class="keyword">raise</span> ValueError(<span class="string">"k must be between 1 and the array length"</span>)
     window_sum = <span class="method">sum</span>(arr[:k])
-    max_sum = window_sum
+    best_sum = window_sum
     <span class="keyword">for</span> i <span class="keyword">in</span> <span class="method">range</span>(k, <span class="method">len</span>(arr)):
         window_sum += arr[i] - arr[i - k]
-        max_sum = <span class="method">max</span>(max_sum, window_sum)
-    <span class="keyword">return</span> max_sum</code></div>
+        best_sum = <span class="method">max</span>(best_sum, window_sum)
+    <span class="keyword">return</span> best_sum</code></div>
 
-<h3>Recursion & Backtracking</h3>
+<h3>Recursion &amp; Backtracking</h3>
 <div class="code-block"><code><span class="keyword">def</span> <span class="method">factorial</span>(n):
-    <span class="keyword">if</span> n <= <span class="number">1</span>: <span class="keyword">return</span> <span class="number">1</span>
+    <span class="keyword">if</span> n &lt;= <span class="number">1</span>: <span class="keyword">return</span> <span class="number">1</span>
     <span class="keyword">return</span> n * factorial(n - <span class="number">1</span>)
 
 <span class="keyword">def</span> <span class="method">subsets</span>(nums):
@@ -558,7 +576,7 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
 
 <span class="method">@lru_cache</span>(maxsize=<span class="keyword">None</span>)
 <span class="keyword">def</span> <span class="method">fib</span>(n):
-    <span class="keyword">if</span> n <= <span class="number">1</span>: <span class="keyword">return</span> n
+    <span class="keyword">if</span> n &lt;= <span class="number">1</span>: <span class="keyword">return</span> n
     <span class="keyword">return</span> fib(n-<span class="number">1</span>) + fib(n-<span class="number">2</span>)</code></div>
 
 <h3>BFS / DFS</h3>
@@ -594,11 +612,11 @@ reduce(<span class="keyword">lambda</span> a, b: a+b, [<span class="number">1</s
 <h3>Binary Search</h3>
 <div class="code-block"><code><span class="keyword">def</span> <span class="method">binary_search</span>(arr, target):
     left, right = <span class="number">0</span>, <span class="method">len</span>(arr) - <span class="number">1</span>
-    <span class="keyword">while</span> left <= right:
+    <span class="keyword">while</span> left &lt;= right:
         mid = (left + right) // <span class="number">2</span>
         <span class="keyword">if</span> arr[mid] == target:
             <span class="keyword">return</span> mid
-        <span class="keyword">elif</span> arr[mid] < target:
+        <span class="keyword">elif</span> arr[mid] &lt; target:
             left = mid + <span class="number">1</span>
         <span class="keyword">else</span>:
             right = mid - <span class="number">1</span>
@@ -634,13 +652,15 @@ largest = -heapq.<span class="method">heappop</span>(max_heap)
     <span class="keyword">return</span> Counter(s) == Counter(t)
 
 <span class="keyword">def</span> <span class="method">merge_intervals</span>(intervals):
-    intervals.<span class="method">sort</span>(key=<span class="keyword">lambda</span> x: x[<span class="number">0</span>])
-    merged = [intervals[<span class="number">0</span>]]
-    <span class="keyword">for</span> curr <span class="keyword">in</span> intervals[<span class="number">1</span>:]:
-        <span class="keyword">if</span> curr[<span class="number">0</span>] <= merged[-<span class="number">1</span>][<span class="number">1</span>]:
+    <span class="keyword">if</span> <span class="keyword">not</span> intervals:
+        <span class="keyword">return</span> []
+    ordered = <span class="method">sorted</span>(intervals, key=<span class="keyword">lambda</span> interval: interval[<span class="number">0</span>])
+    merged = [<span class="method">list</span>(ordered[<span class="number">0</span>])]
+    <span class="keyword">for</span> curr <span class="keyword">in</span> ordered[<span class="number">1</span>:]:
+        <span class="keyword">if</span> curr[<span class="number">0</span>] &lt;= merged[-<span class="number">1</span>][<span class="number">1</span>]:
             merged[-<span class="number">1</span>][<span class="number">1</span>] = <span class="method">max</span>(merged[-<span class="number">1</span>][<span class="number">1</span>], curr[<span class="number">1</span>])
         <span class="keyword">else</span>:
-            merged.<span class="method">append</span>(curr)
+            merged.<span class="method">append</span>(<span class="method">list</span>(curr))
     <span class="keyword">return</span> merged
 
 <span class="keyword">def</span> <span class="method">has_cycle</span>(head):
@@ -695,9 +715,11 @@ bisect.<span class="method">insort</span>(arr, <span class="number">4</span>)</c
 <h2 style="margin-top: 40px;">10. Quick Reference: Time Complexities</h2>
 <table>
 <tr><th>Operation</th><th>List</th><th>Dict</th><th>Set</th><th>Deque</th></tr>
-<tr><td>Access/Search</td><td class="complexity">O(n)</td><td class="complexity">O(1)</td><td class="complexity">O(1)</td><td class="complexity">O(n)</td></tr>
-<tr><td>Insert/Delete (end)</td><td class="complexity">O(1)*</td><td class="complexity">O(1)</td><td class="complexity">O(1)</td><td class="complexity">O(1)</td></tr>
-<tr><td>Insert/Delete (start)</td><td class="complexity">O(n)</td><td class="complexity">O(1)</td><td class="complexity">O(1)</td><td class="complexity">O(1)</td></tr>
+<tr><td>Index access</td><td class="complexity">O(1)</td><td class="complexity">—</td><td class="complexity">—</td><td class="complexity">O(n)</td></tr>
+<tr><td>Lookup/Membership</td><td class="complexity">O(n)</td><td class="complexity">O(1) avg</td><td class="complexity">O(1) avg</td><td class="complexity">O(n)</td></tr>
+<tr><td>Append/Add</td><td class="complexity">O(1)*</td><td class="complexity">O(1) avg</td><td class="complexity">O(1) avg</td><td class="complexity">O(1)</td></tr>
+<tr><td>Remove by value/key</td><td class="complexity">O(n)</td><td class="complexity">O(1) avg</td><td class="complexity">O(1) avg</td><td class="complexity">O(n)</td></tr>
+<tr><td>Insert/Remove left</td><td class="complexity">O(n)</td><td class="complexity">—</td><td class="complexity">—</td><td class="complexity">O(1)</td></tr>
 <tr><td>Sort</td><td class="complexity">O(n log n)</td><td class="complexity">—</td><td class="complexity">—</td><td class="complexity">—</td></tr>
 </table>
 <p class="note">* amortized</p>
