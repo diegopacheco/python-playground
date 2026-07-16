@@ -1,0 +1,5 @@
+WRN 2026-07-16T12:30:26.516 ?.36235    server_start:199: Failed to start server: operation not permitted: /var/folders/m2/6djb07tx1hv0929qwb_znsw00000gn/T/nvim.diegopacheco/koF1l9/nvim.36235.0
+WRN 2026-07-16T12:30:33.839 ?.36254    server_start:199: Failed to start server: operation not permitted: /var/folders/m2/6djb07tx1hv0929qwb_znsw00000gn/T/nvim.diegopacheco/hoeJnw/nvim.36254.0
+WRN 2026-07-16T12:34:05.288 ?.37102    server_start:199: Failed to start server: operation not permitted: /var/folders/m2/6djb07tx1hv0929qwb_znsw00000gn/T/nvim.diegopacheco/GCPtTq/nvim.37102.0
+WRN 2026-07-16T12:34:49.464 ?.37706    server_start:199: Failed to start server: operation not permitted: /var/folders/m2/6djb07tx1hv0929qwb_znsw00000gn/T/nvim.diegopacheco/jwDq04/nvim.37706.0
+WRN 2026-07-16T12:35:43.780 ?.37909    server_start:199: Failed to start server: operation not permitted: /var/folders/m2/6djb07tx1hv0929qwb_znsw00000gn/T/nvim.diegopacheco/RdJBtn/nvim.37909.0
