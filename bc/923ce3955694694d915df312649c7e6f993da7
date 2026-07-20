@@ -1,0 +1,29 @@
+python-essentials-flask-rest/install-deps.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-flask-rest/run.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-flask-rest/requirements.txt
+  s_5c3e1887ed1b69::t_9318707d298b82 1
+python-essentials-flask-rest/src/main.py
+  s_5c3e1887ed1b69::t_9318707d298b82 1-57
+python-essentials-flask-rest/README.md
+  s_5c3e1887ed1b69::t_9318707d298b82 1-38
+python-essentials-flask-rest/test.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "bc923ce3955694694d915df312649c7e6f993da7",
+  "prompts": {},
+  "sessions": {
+    "s_5c3e1887ed1b69": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c4d-1403-7620-8d6e-7dcbf6ad8835",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
