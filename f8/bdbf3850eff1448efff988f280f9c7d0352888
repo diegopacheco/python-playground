@@ -1,0 +1,36 @@
+python-essentials-pgvector/start.sh
+  s_7c02e35087b63b::t_1e96e57d62db98 1-8
+python-essentials-pgvector/README.md
+  s_7c02e35087b63b::t_7ef03cbbdd0d77 49-50,53-54
+  s_7c02e35087b63b::t_50bf3934ea9292 1-48,51-52,55
+python-essentials-pgvector/test.sh
+  s_7c02e35087b63b::t_f7ff815801d625 1-5
+python-essentials-pgvector/run.sh
+  s_7c02e35087b63b::t_270697fc67f182 1-3
+python-essentials-pgvector/src/main.py
+  s_7c02e35087b63b::t_bcd1b2ed824762 1-66
+python-essentials-pgvector/docker-compose.yml
+  s_7c02e35087b63b::t_558a1aca986d24 1-8
+python-essentials-pgvector/install-deps.sh
+  s_7c02e35087b63b::t_6f7f807255308c 1-3
+python-essentials-pgvector/requirements.txt
+  s_7c02e35087b63b::t_75667046c067f4 1-3
+python-essentials-pgvector/stop.sh
+  s_7c02e35087b63b::t_0f58ffc99a4dae 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "f8bdbf3850eff1448efff988f280f9c7d0352888",
+  "prompts": {},
+  "sessions": {
+    "s_7c02e35087b63b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8bd89ec-c3be-4bea-aa71-2080666e3834",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
