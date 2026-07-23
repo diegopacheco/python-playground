@@ -1,0 +1,5 @@
+The python-playground repository uses PostgreSQL with the psycopg2 ThreadedConnectionPool for connection pooling, borrowing and returning connections instead of reopening one per query.
+
+SQLAlchemy 2.0 is used as the ORM over PostgreSQL. It is exposed through a FastAPI REST API that ships an interactive Swagger UI at the /docs path.
+
+Temporal and Celery are used for durable workflows and background task processing.

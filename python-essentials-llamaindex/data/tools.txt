@@ -1,0 +1,7 @@
+The fire library from Google turns a plain Python class into a command line interface automatically, mapping methods to subcommands.
+
+The rich library renders tables, panels, and colored output in the terminal. The tqdm library shows progress bars for loops.
+
+Pydantic validates data using typed models and field constraints. Bleach sanitizes untrusted HTML to prevent cross site scripting.
+
+pgvector is a PostgreSQL extension used to store embeddings as a vector column and run nearest-neighbor similarity search with SQL.
