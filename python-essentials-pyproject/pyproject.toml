@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "greeter"
+version = "1.0.0"
+description = "A tiny packaged greeter built with pyproject.toml"
+readme = "README.md"
+requires-python = ">=3.14"
+authors = [{ name = "Diego Pacheco" }]
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+greeter = "greeter.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
