@@ -1,0 +1,45 @@
+python-essentials-mysql-pool/test.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-5
+python-essentials-mysql-pool/stop.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-mysql-pool/install-deps.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-mysql-pool/requirements.txt
+  s_5c3e1887ed1b69::t_9318707d298b82 1
+python-essentials-mysql-pool/run.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-mysql-pool/docker-compose.yml
+  s_5c3e1887ed1b69::t_9318707d298b82 1-2,4-8
+  s_9d423cd11f5512::t_9238dc205a47cb 3
+python-essentials-mysql-pool/start.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-8
+python-essentials-mysql-pool/src/main.py
+  s_5c3e1887ed1b69::t_9318707d298b82 1-40,72-75,80-83
+  s_9d423cd11f5512::t_1984c2662d7da8 41-71,76-79
+python-essentials-mysql-pool/README.md
+  s_5c3e1887ed1b69::t_9318707d298b82 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "05cfeefbc544405a3cbdc9b223dc0d01ac1b4630",
+  "prompts": {},
+  "sessions": {
+    "s_5c3e1887ed1b69": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c4d-1403-7620-8d6e-7dcbf6ad8835",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    },
+    "s_9d423cd11f5512": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "592410f6-9de7-4c4d-9b72-0f2e5c5c5aa9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
