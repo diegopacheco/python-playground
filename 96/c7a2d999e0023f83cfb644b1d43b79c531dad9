@@ -1,0 +1,54 @@
+python-essentials-sqlalchemy-postgres-rest/run.sh
+  s_a76a78f2eed1eb::t_f14bdf6dcff8d9 3-4
+  s_7c02e35087b63b::t_af6e6c88b73ee6 1-2,5
+python-essentials-sqlalchemy-postgres-rest/README.md
+  s_7c02e35087b63b::t_8e517f0525cd85 1-76
+python-essentials-sqlalchemy-postgres-rest/src/main.py
+  s_584e285b9d2b78::t_5e6b74929bc172 5
+  s_7c02e35087b63b::t_1ad757a374f9a2 1-4,6-47,59-98
+  s_584e285b9d2b78::t_7a6e67921e71f6 48-58
+python-essentials-sqlalchemy-postgres-rest/requirements.txt
+  s_7c02e35087b63b::t_85a6dbec219f03 1-4
+python-essentials-sqlalchemy-postgres-rest/test.sh
+  s_7c02e35087b63b::t_e27503e0aca4e8 1-25
+python-essentials-sqlalchemy-postgres-rest/install-deps.sh
+  s_7c02e35087b63b::t_ea51528f246b86 1-3
+python-essentials-sqlalchemy-postgres-rest/stop.sh
+  s_7c02e35087b63b::t_9472d2c4446725 1-7
+python-essentials-sqlalchemy-postgres-rest/start.sh
+  s_7c02e35087b63b::t_80b5d726eb3319 1-16
+python-essentials-sqlalchemy-postgres-rest/docker-compose.yml
+  s_7c02e35087b63b::t_5b289b4ed4c0e7 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "96c7a2d999e0023f83cfb644b1d43b79c531dad9",
+  "prompts": {},
+  "sessions": {
+    "s_584e285b9d2b78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ef05277-44ef-49ba-aabc-91524db6de70",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    },
+    "s_7c02e35087b63b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8bd89ec-c3be-4bea-aa71-2080666e3834",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    },
+    "s_a76a78f2eed1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3ad109da-8838-4c66-b923-fef950dbcdfc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
