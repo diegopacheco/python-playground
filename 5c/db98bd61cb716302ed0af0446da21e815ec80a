@@ -1,0 +1,27 @@
+python-essentials-rich/src/main.py
+  s_7c02e35087b63b::t_cee983d4edd4fd 1-25
+python-essentials-rich/README.md
+  s_7c02e35087b63b::t_c9b0d4fe3adbac 1-53
+python-essentials-rich/requirements.txt
+  s_7c02e35087b63b::t_078394e2322b8e 1
+python-essentials-rich/run.sh
+  s_7c02e35087b63b::t_b04d133c047502 1-3
+python-essentials-rich/install-deps.sh
+  s_7c02e35087b63b::t_d7459c732348d5 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "5cdb98bd61cb716302ed0af0446da21e815ec80a",
+  "prompts": {},
+  "sessions": {
+    "s_7c02e35087b63b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8bd89ec-c3be-4bea-aa71-2080666e3834",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
