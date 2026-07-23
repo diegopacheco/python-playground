@@ -1,0 +1,8 @@
+services:
+  mysql:
+    image: docker.io/library/mysql:9.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: essentials
+    ports:
+      - "3306:3306"
