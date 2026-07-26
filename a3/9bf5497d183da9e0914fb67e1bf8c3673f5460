@@ -1,0 +1,23 @@
+python-essentials-jwt/run.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-jwt/README.md
+  s_5c3e1887ed1b69::t_9318707d298b82 1-22
+python-essentials-jwt/src/main.py
+  s_5c3e1887ed1b69::t_9318707d298b82 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a39bf5497d183da9e0914fb67e1bf8c3673f5460",
+  "prompts": {},
+  "sessions": {
+    "s_5c3e1887ed1b69": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c4d-1403-7620-8d6e-7dcbf6ad8835",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
