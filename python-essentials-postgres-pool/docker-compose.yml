@@ -1,0 +1,8 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: essentials
+    ports:
+      - "5432:5432"
