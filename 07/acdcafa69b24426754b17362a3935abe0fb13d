@@ -1,0 +1,35 @@
+python-essentials-postgres-pool/install-deps.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-postgres-pool/test.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-5
+python-essentials-postgres-pool/start.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-8
+python-essentials-postgres-pool/stop.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+python-essentials-postgres-pool/requirements.txt
+  s_5c3e1887ed1b69::t_9318707d298b82 1
+python-essentials-postgres-pool/src/main.py
+  s_5c3e1887ed1b69::t_9318707d298b82 1-49
+python-essentials-postgres-pool/docker-compose.yml
+  s_5c3e1887ed1b69::t_9318707d298b82 1-8
+python-essentials-postgres-pool/README.md
+  s_5c3e1887ed1b69::t_9318707d298b82 1-30
+python-essentials-postgres-pool/run.sh
+  s_5c3e1887ed1b69::t_9318707d298b82 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "07acdcafa69b24426754b17362a3935abe0fb13d",
+  "prompts": {},
+  "sessions": {
+    "s_5c3e1887ed1b69": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6c4d-1403-7620-8d6e-7dcbf6ad8835",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
