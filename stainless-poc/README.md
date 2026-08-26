@@ -77,6 +77,9 @@ A task is `{ id, title, details, state, created_at }` where `state` is one of `p
 Prerequisites: Python 3.14.6, a [Stainless](https://app.stainless.com) account, and an API key from your
 organization settings.
 
+> Generation is a hosted service. Without an organization and an API key, `./generate-sdk.sh` cannot run, and
+> without `sdk/` neither can the client. The spec, the config and the server stand on their own.
+
 ```bash
 export STAINLESS_API_KEY=your-key
 export STAINLESS_ORG=your-org
