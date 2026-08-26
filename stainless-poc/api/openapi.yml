@@ -1,0 +1,251 @@
+openapi: 3.1.0
+info:
+  title: Taskly API
+  version: 1.0.0
+  description: |
+    Task tracking API. This document is the single source of truth: Stainless reads it,
+    together with stainless.yml, to generate the Python SDK.
+servers:
+  - url: http://localhost:8080
+    description: Local Taskly server
+tags:
+  - name: Tasks
+  - name: Status
+security:
+  - BearerAuth: []
+paths:
+  /status:
+    get:
+      operationId: getStatus
+      tags:
+        - Status
+      summary: Check whether the API is reachable
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+  /tasks:
+    get:
+      operationId: listTasks
+      tags:
+        - Tasks
+      summary: List tasks
+      parameters:
+        - $ref: "#/components/parameters/StateFilter"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createTask
+      tags:
+        - Tasks
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /tasks/{task_id}:
+    get:
+      operationId: retrieveTask
+      tags:
+        - Tasks
+      summary: Retrieve a task
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateTask
+      tags:
+        - Tasks
+      summary: Update a task
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteTask
+      tags:
+        - Tasks
+      summary: Delete a task
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TaskID:
+      in: path
+      name: task_id
+      required: true
+      description: Unique identifier of the task.
+      schema:
+        type: string
+    StateFilter:
+      in: query
+      name: state
+      required: false
+      description: Return only tasks in this state.
+      schema:
+        $ref: "#/components/schemas/TaskState"
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    TaskState:
+      type: string
+      enum:
+        - pending
+        - doing
+        - done
+    Task:
+      type: object
+      required:
+        - id
+        - title
+        - state
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the task.
+        title:
+          type: string
+          description: Short description of the work.
+        details:
+          type: string
+          nullable: true
+          description: Longer description of the work.
+        state:
+          $ref: "#/components/schemas/TaskState"
+        created_at:
+          type: string
+          format: date-time
+          description: When the task was created.
+    TaskCreate:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          description: Short description of the work.
+        details:
+          type: string
+          nullable: true
+          description: Longer description of the work.
+        state:
+          $ref: "#/components/schemas/TaskState"
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Short description of the work.
+        details:
+          type: string
+          nullable: true
+          description: Longer description of the work.
+        state:
+          $ref: "#/components/schemas/TaskState"
+    TaskList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+    Status:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string

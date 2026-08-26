@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 420" width="1120" height="420" font-family="Caveat, 'Comic Sans MS', cursive">
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;display=swap');</style>
+    <filter id="wobble">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M1 1 L11 6 L1 11 z" fill="#5b5b6b"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1120" height="420" fill="#fdfcf7"/>
+  <text x="40" y="42" font-size="30" fill="#3d3d4e" font-weight="700">Taskly: OpenAPI docs in, Python SDK out</text>
+
+  <g filter="url(#wobble)" stroke="#5b5b6b" stroke-width="2.2" fill="none">
+    <rect x="40" y="70" width="210" height="58" rx="10" fill="#e8f1fb"/>
+    <rect x="40" y="148" width="210" height="58" rx="10" fill="#e8f1fb"/>
+    <rect x="310" y="108" width="210" height="62" rx="10" fill="#fdf0dc"/>
+    <rect x="580" y="108" width="220" height="62" rx="10" fill="#f2e5f7"/>
+    <rect x="860" y="108" width="215" height="62" rx="10" fill="#e6f6ea"/>
+    <rect x="860" y="278" width="215" height="58" rx="10" fill="#e6f6ea"/>
+    <rect x="580" y="278" width="220" height="58" rx="10" fill="#fdf0dc"/>
+    <rect x="310" y="278" width="210" height="58" rx="10" fill="#fbe6e6"/>
+  </g>
+
+  <g font-size="23" fill="#3d3d4e" text-anchor="middle">
+    <text x="145" y="99">api/openapi.yml</text>
+    <text x="145" y="122" font-size="18" fill="#6b6b7b">the API docs</text>
+    <text x="145" y="177">api/openapi.stainless.yml</text>
+    <text x="145" y="199" font-size="18" fill="#6b6b7b">SDK shape</text>
+    <text x="415" y="136">tools/stainless_build.py</text>
+    <text x="415" y="158" font-size="18" fill="#6b6b7b">stdlib HTTP client</text>
+    <text x="690" y="136">Stainless API</text>
+    <text x="690" y="158" font-size="18" fill="#6b6b7b">api.stainless.com</text>
+    <text x="967" y="136">sdk/</text>
+    <text x="967" y="158" font-size="18" fill="#6b6b7b">python package</text>
+    <text x="967" y="306">.venv</text>
+    <text x="967" y="326" font-size="18" fill="#6b6b7b">pip install ./sdk</text>
+    <text x="690" y="306">client/main.py</text>
+    <text x="690" y="326" font-size="18" fill="#6b6b7b">consumes the sdk</text>
+    <text x="415" y="306">server/main.py</text>
+    <text x="415" y="326" font-size="18" fill="#6b6b7b">localhost:8080</text>
+  </g>
+
+  <g filter="url(#wobble)" stroke="#5b5b6b" stroke-width="2.2" fill="none" marker-end="url(#arrow)">
+    <path d="M250 99 C280 99 282 128 308 133"/>
+    <path d="M250 177 C280 177 282 152 308 146"/>
+    <path d="M520 139 L576 139"/>
+    <path d="M800 139 L856 139"/>
+    <path d="M967 170 L967 274"/>
+    <path d="M856 307 L804 307"/>
+    <path d="M576 307 L524 307"/>
+  </g>
+  <g filter="url(#wobble)" stroke="#9a9aad" stroke-width="2" fill="none" stroke-dasharray="7 6" marker-end="url(#arrow)">
+    <path d="M524 330 L576 330"/>
+  </g>
+
+  <g font-size="19" fill="#6b6b7b" text-anchor="middle">
+    <text x="548" y="128">build</text>
+    <text x="828" y="128">tarball</text>
+    <text x="1000" y="228">install</text>
+    <text x="830" y="296">import</text>
+    <text x="550" y="296">HTTP + bearer</text>
+    <text x="550" y="352">tasks JSON</text>
+  </g>
+</svg>

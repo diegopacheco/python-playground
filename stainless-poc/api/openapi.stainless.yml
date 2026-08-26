@@ -1,0 +1,38 @@
+organization:
+  name: taskly
+  docs: https://github.com/diegopacheco/python-playground
+
+settings:
+  license: MIT
+
+environments:
+  local: http://localhost:8080
+
+resources:
+  $client:
+    methods:
+      status: get /status
+  tasks:
+    models:
+      task: "#/components/schemas/Task"
+    methods:
+      create: post /tasks
+      retrieve: get /tasks/{task_id}
+      update: put /tasks/{task_id}
+      list: get /tasks
+      delete: delete /tasks/{task_id}
+
+client_settings:
+  opts:
+    api_key:
+      type: string
+      nullable: true
+      auth:
+        security_scheme: BearerAuth
+      read_env: TASKLY_API_KEY
+
+targets:
+  python:
+    edition: python.2025-11-20
+    package_name: taskly
+    project_name: taskly
