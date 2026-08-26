@@ -1,0 +1,19 @@
+stainless-poc/README.md
+  s_a2e23814f2f511::t_39db59e70ab0c7 80-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "425f56b0839151f42c578e85fde23399794542d3",
+  "prompts": {},
+  "sessions": {
+    "s_a2e23814f2f511": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90d938e2-f637-4818-a1d8-701194b3ae2c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
