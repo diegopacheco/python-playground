@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: jsonb_postgres
+    environment:
+      POSTGRES_USER: jsonb_user
+      POSTGRES_PASSWORD: jsonb_pass
+      POSTGRES_DB: jsonb_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - jsonb_data:/var/lib/postgresql
+volumes:
+  jsonb_data:

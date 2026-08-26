@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Postgres JSONB Console</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <h1>Postgres JSONB Console</h1>
+  <p>SQLAlchemy 2.0 over PostgreSQL 18 &mdash; every row stores an arbitrary JSON document in a <code>JSONB</code> column.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2 id="form-title">New document</h2>
+    <form id="doc-form">
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" maxlength="120" placeholder="order-1001" required>
+
+      <label for="data">JSONB payload</label>
+      <textarea id="data" name="data" rows="12" spellcheck="false" required></textarea>
+
+      <div class="actions">
+        <button type="submit" class="primary">Save</button>
+        <button type="button" id="format">Format JSON</button>
+        <button type="button" id="clear-form" class="ghost">Clear</button>
+      </div>
+      <p id="form-error" class="error"></p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Documents</h2>
+    <div class="search">
+      <label for="contains">Containment filter <code>data @&gt; :json</code></label>
+      <div class="search-row">
+        <input id="contains" type="text" spellcheck="false" placeholder='{"status": "paid"}'>
+        <button type="button" id="search" class="primary">Search</button>
+        <button type="button" id="clear-search" class="ghost">All</button>
+      </div>
+      <p id="search-error" class="error"></p>
+    </div>
+    <p id="count" class="count"></p>
+    <ul id="list"></ul>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
