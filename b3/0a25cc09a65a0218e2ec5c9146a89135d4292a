@@ -1,0 +1,43 @@
+Alembic-migrations/build.sh
+  s_1554d9a6579f0f::t_4ab4b473348b70 1-7
+Alembic-migrations/stop.sh
+  s_1554d9a6579f0f::t_4ab4b473348b70 1-2
+Alembic-migrations/migrations/script.py.mako
+  s_1554d9a6579f0f::t_9401034104d18c 1-23
+Alembic-migrations/migrations/versions/0001_create_teams.py
+  s_1554d9a6579f0f::t_9401034104d18c 1-24
+Alembic-migrations/alembic.ini
+  s_1554d9a6579f0f::t_f7912d923259d3 1-2,4-36
+  s_1554d9a6579f0f::t_ed3d3e3abf9754 3
+Alembic-migrations/docker-compose.yml
+  s_1554d9a6579f0f::t_f7912d923259d3 1-14
+Alembic-migrations/requirements.txt
+  s_1554d9a6579f0f::t_ed3d3e3abf9754 2
+  s_1554d9a6579f0f::t_f7912d923259d3 1
+Alembic-migrations/README.md
+  s_1554d9a6579f0f::t_2890c5a58e5e8e 1-97
+Alembic-migrations/migrations/versions/0002_create_members.py
+  s_1554d9a6579f0f::t_9401034104d18c 1-26
+Alembic-migrations/test.sh
+  s_1554d9a6579f0f::t_4ab4b473348b70 1-30
+Alembic-migrations/run.sh
+  s_1554d9a6579f0f::t_4ab4b473348b70 1-13
+Alembic-migrations/migrations/env.py
+  s_1554d9a6579f0f::t_9401034104d18c 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "b30a25cc09a65a0218e2ec5c9146a89135d4292a",
+  "prompts": {},
+  "sessions": {
+    "s_1554d9a6579f0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b943072-586b-49c4-83e0-8cd5e7188cf0",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
