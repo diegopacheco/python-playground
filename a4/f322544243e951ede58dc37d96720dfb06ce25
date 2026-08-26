@@ -1,0 +1,62 @@
+sql-alchemy-postgres-jsonb/src/static/app.css
+  s_cdcc64b1432532::t_851960c60285a2 1-137
+sql-alchemy-postgres-jsonb/tests/conftest.py
+  s_cdcc64b1432532::t_d769fead9d9e0b 1-19
+sql-alchemy-postgres-jsonb/run.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 2-6
+  s_cdcc64b1432532::t_ba75965a5aa4b7 1
+sql-alchemy-postgres-jsonb/podman-compose.yml
+  s_cdcc64b1432532::t_09fc200a0aebf0 1-11,13-14
+  s_cdcc64b1432532::t_75233f64fa6cbb 12
+sql-alchemy-postgres-jsonb/db-start.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 1-16
+sql-alchemy-postgres-jsonb/test.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 1-6
+sql-alchemy-postgres-jsonb/.gitignore
+  s_cdcc64b1432532::t_09fc200a0aebf0 1-5
+sql-alchemy-postgres-jsonb/src/db.py
+  s_cdcc64b1432532::t_788fc617f8f0d1 1-43
+sql-alchemy-postgres-jsonb/README.md
+  s_cdcc64b1432532::t_f8b94aa3511c98 1-171
+sql-alchemy-postgres-jsonb/tests/test_jsonb.py
+  s_cdcc64b1432532::t_bcbada670b543e 21
+  s_cdcc64b1432532::t_d769fead9d9e0b 1-20,22-104
+sql-alchemy-postgres-jsonb/src/static/index.html
+  s_cdcc64b1432532::t_7441407fd99475 1-27,29-52
+  s_cdcc64b1432532::t_5db115e41c6dc8 28
+sql-alchemy-postgres-jsonb/requirements.txt
+  s_cdcc64b1432532::t_e0540a27d7459a 6
+  s_cdcc64b1432532::t_34457ffd799c47 1-5
+sql-alchemy-postgres-jsonb/ui-start.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 1-25
+sql-alchemy-postgres-jsonb/ui-stop.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 1-11
+sql-alchemy-postgres-jsonb/src/static/app.js
+  s_cdcc64b1432532::t_fed9f03cbc6142 1-96,98-142,144-154
+  s_cdcc64b1432532::t_5db115e41c6dc8 97,143
+sql-alchemy-postgres-jsonb/src/app.py
+  s_cdcc64b1432532::t_cc8cf9121a5175 1,4-15,25-81
+  s_cdcc64b1432532::t_4f78cef7eb8955 2-3,16-24
+sql-alchemy-postgres-jsonb/stop-all.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 1-6
+sql-alchemy-postgres-jsonb/stop.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 1-5
+sql-alchemy-postgres-jsonb/build.sh
+  s_cdcc64b1432532::t_0f123cd0853d9a 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "a4f322544243e951ede58dc37d96720dfb06ce25",
+  "prompts": {},
+  "sessions": {
+    "s_cdcc64b1432532": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d1a3811b-3f1b-4100-98bc-acc414c2c63b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
