@@ -1,0 +1,83 @@
+VCR.py-poc/web/src/tabs/Blog.jsx
+  s_d11602d236ce43::t_2a955d62d5ff97 1-83
+VCR.py-poc/backend/api.py
+  s_d11602d236ce43::t_d44b879fae9c3a 1-137,139-314
+  s_d11602d236ce43::t_9812b4fd9f30da 138
+VCR.py-poc/web/src/App.jsx
+  s_d11602d236ce43::t_76f784cb6dedec 1-66
+VCR.py-poc/web/src/tabs/Books.jsx
+  s_d11602d236ce43::t_d5c6c4b6a05722 1-107
+VCR.py-poc/web/.gitignore
+  s_d11602d236ce43::t_3ade222defe690 1-3
+VCR.py-poc/scripts/start.sh
+  s_d11602d236ce43::t_77d83b7186f6f6 34-35,37
+  s_d11602d236ce43::t_9f392c75a8dfc6 1-33,36,38
+VCR.py-poc/web/vite.config.js
+  s_d11602d236ce43::t_171408933b4514 1-14
+VCR.py-poc/.gitignore
+  s_d11602d236ce43::t_3ade222defe690 1-18
+VCR.py-poc/scripts/test.sh
+  s_d11602d236ce43::t_9f392c75a8dfc6 1-5
+VCR.py-poc/tests/test_tapes.py
+  s_d11602d236ce43::t_7a881da122ecc9 1-39
+VCR.py-poc/backend/tapes.py
+  s_d11602d236ce43::t_69de5ecee7f002 1-116
+VCR.py-poc/scripts/record.sh
+  s_d11602d236ce43::t_9f392c75a8dfc6 1-5
+VCR.py-poc/web/src/tabs/Notes.jsx
+  s_d11602d236ce43::t_22f2a1f00c0fcd 1-106
+VCR.py-poc/backend/server.py
+  s_d11602d236ce43::t_0df51d3088dda7 87
+  s_d11602d236ce43::t_503989d1630af2 1-5,7-86,88-111
+  s_d11602d236ce43::t_003400967084e2 6
+VCR.py-poc/web/src/main.jsx
+  s_d11602d236ce43::t_c59de73f88546d 1-10
+VCR.py-poc/scripts/stop.sh
+  s_d11602d236ce43::t_9f392c75a8dfc6 1-21
+VCR.py-poc/tests/conftest.py
+  s_d11602d236ce43::t_34848c822daeeb 1-32
+VCR.py-poc/web/index.html
+  s_d11602d236ce43::t_171408933b4514 1-12
+VCR.py-poc/pytest.ini
+  s_d11602d236ce43::t_5e534e38915ca0 1-4
+VCR.py-poc/web/src/tabs/Game.jsx
+  s_d11602d236ce43::t_9a1ea471e9570b 1-77
+VCR.py-poc/backend/record.py
+  s_d11602d236ce43::t_7dfb3db137d51f 1-21
+VCR.py-poc/tests/test_features.py
+  s_d11602d236ce43::t_cfec1fb3951962 1-155
+VCR.py-poc/scripts/build.sh
+  s_d11602d236ce43::t_9f392c75a8dfc6 1-15
+VCR.py-poc/requirements.txt
+  s_d11602d236ce43::t_67782376a6547a 1-3
+VCR.py-poc/web/src/styles.css
+  s_d11602d236ce43::t_ce8ccd9d5aace7 1-136
+VCR.py-poc/web/src/tabs/Gallery.jsx
+  s_d11602d236ce43::t_3a53135c51b669 1-113
+VCR.py-poc/web/src/api.js
+  s_d11602d236ce43::t_1593f8636679f4 1-26
+VCR.py-poc/README.md
+  s_d11602d236ce43::t_9a90d8dabe4c54 1-185
+VCR.py-poc/web/package.json
+  s_d11602d236ce43::t_171408933b4514 1-18
+VCR.py-poc/web/src/tabs/Calculator.jsx
+  s_d11602d236ce43::t_e51d7e9ca23bb4 1-82
+VCR.py-poc/web/bun.lock
+  s_d11602d236ce43::t_a060ca227dddca 1-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "9c3ee61451164ba6b663fbbc0774b0973ae358cd",
+  "prompts": {},
+  "sessions": {
+    "s_d11602d236ce43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68bbc31b-e7f9-4815-8836-e2d557f6f7c7",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
