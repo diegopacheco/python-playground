@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if ! .venv/bin/python -c "import taskly" >/dev/null 2>&1; then
-  echo "the taskly sdk is not installed, run ./generate-sdk.sh first"
+if ! .venv/bin/python -c "import taskly" >/dev/null 2>&1 && ! .venv/bin/python -c "import taskly_offline" >/dev/null 2>&1; then
+  echo "no generated sdk installed, run ./generate-sdk.sh or ./generate-sdk-offline.sh first"
   exit 1
 fi
 
@@ -25,4 +25,4 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
-.venv/bin/python client/main.py
+./run-client.sh

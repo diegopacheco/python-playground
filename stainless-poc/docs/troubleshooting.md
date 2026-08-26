@@ -28,6 +28,10 @@ The organization has no active plan for this target.
 
 Builds are queued server side. Re-run the script; it creates a new build rather than resuming the old one.
 
+## `no generated sdk installed`
+
+Neither lane has run. Use `./generate-sdk-offline.sh` if you have no Stainless account.
+
 ## `the taskly sdk is not installed`
 
 `./generate-sdk.sh` never finished, or the venv was rebuilt afterwards. Run it again; it installs `sdk/` into
@@ -45,6 +49,11 @@ The server is not running. `./run-server.sh` in another shell, or use `./run-all
 
 The server accepts any non empty bearer token. A 401 means none was sent, which points at `api_key` being
 `None`: pass it to the constructor or export `TASKLY_API_KEY`.
+
+## The offline generator warns about ruff
+
+`generate-sdk-offline.sh` prepends `.venv/bin` to `PATH` so the generator finds the ruff it installed. Running
+`openapi-python-client` by hand without that prints a warning and skips formatting; the client still works.
 
 ## Port 8080 is taken
 
