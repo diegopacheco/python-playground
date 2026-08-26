@@ -1,0 +1,38 @@
+stainless-poc/run-all.sh
+  s_a2e23814f2f511::t_013b3e7dca6339 5-6,28
+stainless-poc/docs/offline-lane.md
+  s_a2e23814f2f511::t_2022e3e86017ba 1-74
+stainless-poc/generate-sdk-offline.sh
+  s_a2e23814f2f511::t_013b3e7dca6339 1-16
+stainless-poc/docs/architecture.svg
+  s_a2e23814f2f511::t_bc767d23067aa7 1,13,67-93
+stainless-poc/client/main_offline.py
+  s_a2e23814f2f511::t_013b3e7dca6339 1-52
+stainless-poc/docs/troubleshooting.md
+  s_a2e23814f2f511::t_2022e3e86017ba 31-34,53-56
+  s_a2e23814f2f511::t_652bd574b80ce9 57
+stainless-poc/api/openapi-python-client.yml
+  s_a2e23814f2f511::t_5a8d0086bdc489 1-2
+stainless-poc/run-client.sh
+  s_a2e23814f2f511::t_013b3e7dca6339 5-7,10-16
+stainless-poc/README.md
+  s_a2e23814f2f511::t_1c0494c52cbe0f 10-14,27-30,46,54,88-100,102,121,124,149
+stainless-poc/.gitignore
+  s_a2e23814f2f511::t_013b3e7dca6339 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "4312936b3a137c247e09b5855cfd94ff21078bf3",
+  "prompts": {},
+  "sessions": {
+    "s_a2e23814f2f511": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90d938e2-f637-4818-a1d8-701194b3ae2c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
