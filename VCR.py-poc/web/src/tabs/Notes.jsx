@@ -7,24 +7,42 @@ export default function Notes() {
   const [notes, setNotes] = useState([])
   const [draft, setDraft] = useState(BLANK)
   const [todo, setTodo] = useState('')
+  const [error, setError] = useState('')
 
   async function load() {
-    setNotes((await api('/notes/list-notes')).items)
+    try {
+      setNotes((await api('/notes/list-notes')).items)
+      setError('')
+    } catch (failure) {
+      setError(failure.message)
+    }
   }
 
   useEffect(() => { load() }, [])
 
+  async function persist(note) {
+    await api(note.id ? '/notes/update-note' : '/notes/create-note', note)
+    await load()
+  }
+
   async function save(event) {
     event.preventDefault()
-    await api(draft.id ? '/notes/update-note' : '/notes/create-note', draft)
-    setDraft(BLANK)
-    load()
+    try {
+      await persist(draft)
+      setDraft(BLANK)
+    } catch (failure) {
+      setError(failure.message)
+    }
   }
 
   async function remove(id) {
-    await api('/notes/delete-note', { id })
-    if (draft.id === id) setDraft(BLANK)
-    load()
+    try {
+      await api('/notes/delete-note', { id })
+      if (draft.id === id) setDraft(BLANK)
+      await load()
+    } catch (failure) {
+      setError(failure.message)
+    }
   }
 
   function addTodo(event) {
@@ -35,8 +53,15 @@ export default function Notes() {
     setTodo('')
   }
 
-  function toggle(id) {
-    setDraft({ ...draft, todos: draft.todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) })
+  async function toggle(id) {
+    const next = { ...draft, todos: draft.todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) }
+    setDraft(next)
+    if (!next.id) return
+    try {
+      await persist(next)
+    } catch (failure) {
+      setError(failure.message)
+    }
   }
 
   function dropTodo(id) {
@@ -100,6 +125,8 @@ export default function Notes() {
           <button className="btn primary" type="submit">{draft.id ? 'Save note' : 'Create note'}</button>
           {draft.id && <button className="btn danger" type="button" onClick={() => remove(draft.id)}>Delete</button>}
         </div>
+
+        {error && <p className="error">{error}</p>}
       </form>
     </div>
   )

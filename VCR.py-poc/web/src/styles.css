@@ -40,6 +40,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .monitor .cassette { color: var(--tape); }
 .monitor .retaped { color: var(--accent); }
 .monitor .idle { color: var(--muted); }
+.monitor.bad { border-color: var(--hot); background: #2a1618; }
+.monitor.bad .dot { background: var(--hot); box-shadow: 0 0 8px var(--hot); }
+.monitor .failed { color: var(--hot); font-weight: 700; }
 
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
 .tabs button {

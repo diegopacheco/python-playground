@@ -24,6 +24,15 @@ function Monitor() {
     <div className="monitor"><span className="dot" /><span className="idle">no cassette played yet</span></div>
   )
 
+  if (!tape.ok) return (
+    <div className="monitor bad">
+      <span className="dot" />
+      <span className="label">{tape.path}</span>
+      <span className="failed">{tape.status || 'no response'} — {tape.error}</span>
+      <span className="idle">{tape.at}</span>
+    </div>
+  )
+
   return (
     <div className="monitor">
       <span className="dot" />

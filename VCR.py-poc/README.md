@@ -31,10 +31,10 @@ X-Vcr-Retaped:  books_list-books.yaml,-books_search-books__fb177512.yaml
 - **Books CRUD** — searchable grid, click a row to load it into the editor, create / edit / delete. Proves the tape model survives a real list-detail-mutate loop.
 - **Calculator with history** — every computation is appended to a history tape. The expression is parsed with `ast`, so `__import__('os')` is rejected instead of evaluated.
 - **Image gallery** — drag and drop from the desktop or paste a URL, then delete. Dropped bytes go to the OS temp dir; only metadata is taped.
-- **Notes with to-dos** — Notion-style note = title + body + a checklist, all edited together and saved as one tape rewrite.
+- **Notes with to-dos** — Notion-style note = title + body + a checklist. Ticking a box on a saved note persists immediately; title and body save on submit.
 - **Rock paper scissors** — the PC move is generated at tape-write time, so each round produces a fresh cassette and the score is recomputed from the whole history.
 - **Mini blog** — posts with an image and an embedded YouTube video, editable and deletable.
-- **Tape monitor** — a strip above the tabs naming the exact cassette that answered the last call, so the mechanism is visible while you click.
+- **Tape monitor** — a strip above the tabs naming the exact cassette that answered the last call, so the mechanism is visible while you click. It turns red and names the reason when a call fails, so nothing ever fails silently.
 
 ## Stack
 
@@ -124,7 +124,7 @@ interactions:
 
 Then open http://localhost:5173.
 
-`start.sh` records the seed tapes and runs `bun install` on first use, so it works from a clean checkout on its own.
+`start.sh` records the seed tapes and runs `bun install` on first use, so it works from a clean checkout on its own. It refuses to start if :7500 or :5173 is already taken, and it aborts with the log if either process fails to bind — it never reports a startup that did not happen. `stop.sh` kills the vite grandchild as well as the bun wrapper, then verifies both ports are actually free before reporting success.
 
 To see the mechanism fail on purpose:
 
