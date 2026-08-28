@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>python3-httpx2 &mdash; POC</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --card: #ffffff;
+    --ink: #1b1b1f;
+    --muted: #63636e;
+    --line: #e4e2dc;
+    --accent: #4f46e5;
+    --accent-soft: #eef2ff;
+    --teal: #0d7d6f;
+    --teal-soft: #e6f5f2;
+    --amber: #b4740b;
+    --code-bg: #fbfaf7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  code, pre { font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(247, 246, 242, .88);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  header.top .inner {
+    max-width: 1080px; margin: 0 auto; padding: 14px 24px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  header.top strong { font-size: 17px; letter-spacing: -.2px; }
+  header.top nav { margin-left: auto; display: flex; gap: 18px; flex-wrap: wrap; }
+  header.top nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
+  header.top nav a:hover { color: var(--accent); }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 0 24px 90px; }
+  section { padding-top: 56px; }
+  h1 { font-size: 42px; line-height: 1.15; letter-spacing: -1px; margin: 48px 0 14px; }
+  h2 { font-size: 26px; letter-spacing: -.4px; margin: 0 0 8px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p.lead { font-size: 19px; color: var(--muted); max-width: 74ch; margin: 0 0 22px; }
+  p { max-width: 78ch; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
+  .pill {
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 13px; font-size: 13px; color: var(--muted);
+  }
+  .pill b { color: var(--ink); font-weight: 600; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 22px;
+  }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid .card p { font-size: 14.5px; color: var(--muted); margin: 0; }
+  .tag {
+    display: inline-block; font-size: 11px; letter-spacing: .6px; text-transform: uppercase;
+    color: var(--teal); background: var(--teal-soft); border-radius: 5px; padding: 2px 7px; margin-bottom: 8px;
+  }
+  .tag.new { color: var(--accent); background: var(--accent-soft); }
+
+  figure { margin: 0; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 14px; background: #fff; display: block; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
+  td.verb { white-space: nowrap; }
+  td.verb span {
+    font-family: "SFMono-Regular", Menlo, monospace; font-size: 12.5px; font-weight: 600;
+    background: var(--accent-soft); color: var(--accent); border-radius: 5px; padding: 2px 7px;
+  }
+  td.path { font-family: "SFMono-Regular", Menlo, monospace; font-size: 13.5px; white-space: nowrap; }
+  td.note { color: var(--muted); }
+
+  .snippet { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--code-bg); margin: 14px 0 0; }
+  .snippet .bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px; border-bottom: 1px solid var(--line); background: #fff;
+    font-size: 13px; color: var(--muted);
+  }
+  .snippet .bar b { color: var(--ink); font-weight: 600; font-family: "SFMono-Regular", Menlo, monospace; font-size: 12.5px; }
+  .snippet .bar em { margin-left: auto; font-style: normal; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  pre.code { margin: 0; padding: 14px 0; overflow-x: auto; font-size: 13px; line-height: 1.7; }
+  pre.code .ln { display: flex; }
+  pre.code .gutter {
+    flex: 0 0 46px; text-align: right; padding-right: 14px;
+    color: #b6b3ab; user-select: none;
+  }
+  pre.code .src { white-space: pre; padding-right: 18px; }
+  .t-com { color: #8a8f98; font-style: italic; }
+  .t-str { color: #0a7d4f; }
+  .t-kw  { color: #9333ea; }
+  .t-num { color: #b4740b; }
+  .t-fn  { color: #1d6ed8; }
+  .t-var { color: #b4740b; }
+
+  ul.plain { padding-left: 20px; margin: 0; }
+  ul.plain li { margin-bottom: 6px; color: var(--muted); font-size: 15px; }
+  ul.plain li b { color: var(--ink); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="inner">
+    <strong>python3-httpx2</strong>
+    <nav>
+      <a href="#overview">Overview</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#features">Features</a>
+      <a href="#api">API</a>
+      <a href="#code">Code</a>
+      <a href="#run">Run</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section id="overview" style="padding-top: 8px;">
+  <h1>A proof of concept for <br>HTTPX2 on Python 3.14.6</h1>
+  <p class="lead">
+    HTTPX2 is Pydantic's continuation of HTTPX. This POC exercises the parts that are actually new &mdash;
+    the <code>QUERY</code> verb, first-class server-sent events, and the WebSocket entry point &mdash;
+    against a real HTTP server written with nothing but the Python standard library.
+  </p>
+  <div class="pills">
+    <span class="pill"><b>httpx2</b> 2.12.0</span>
+    <span class="pill"><b>httpcore2</b> 2.12.0</span>
+    <span class="pill"><b>Python</b> 3.14.6</span>
+    <span class="pill"><b>Server deps</b> none</span>
+    <span class="pill"><b>Tests</b> 12 passing</span>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>Why it exists</h3>
+      <p>HTTPX has seen limited activity. Pydantic picked up stewardship as HTTPX2, keeping the API but shipping features HTTPX never had. This POC pins down what changed.</p>
+    </div>
+    <div class="card">
+      <h3>Why a stdlib server</h3>
+      <p>A <code>ThreadingHTTPServer</code> speaks real HTTP/1.1 over a real socket, so the client is exercised end to end without pulling in a web framework.</p>
+    </div>
+    <div class="card">
+      <h3>What is verified</h3>
+      <p>Every claim below is backed by a test: the QUERY verb reaches the wire, streaming never buffers, SSE decodes ids, and timeouts fire.</p>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <h2>Architecture</h2>
+  <p class="sub">One process per side. The client half is <code>src/client.py</code>; the server half is <code>src/server.py</code>.</p>
+  <figure>
+    <img src="architecture.png" alt="Flow from main.py and the test suite through httpx2 clients and transports down to the stdlib HTTP server and its endpoints">
+    <figcaption>
+      Both entry points share <code>src/client.py</code>. The suite additionally swaps in <code>MockTransport</code>
+      to run the very same client functions with no socket at all.
+    </figcaption>
+  </figure>
+</section>
+
+<section id="features">
+  <h2>Features</h2>
+  <p class="sub">Each card maps to a function in <code>src/client.py</code> and a test in <code>tests/test_client.py</code>.</p>
+  <div class="grid">
+    <div class="card">
+      <span class="tag new">new in httpx2</span>
+      <h3>The QUERY verb</h3>
+      <p><code>client.query()</code> sends a safe, idempotent request that carries a body &mdash; filters that are too big for a URL no longer need a POST.</p>
+    </div>
+    <div class="card">
+      <span class="tag new">new in httpx2</span>
+      <h3>Server-sent events</h3>
+      <p><code>client.sse()</code> yields <code>ServerSentEvent</code> objects with <code>event</code>, <code>id</code> and <code>json()</code>. The separate <code>httpx-sse</code> package is no longer needed.</p>
+    </div>
+    <div class="card">
+      <span class="tag new">new in httpx2</span>
+      <h3>WebSockets</h3>
+      <p><code>client.websocket()</code> ships in the box behind the <code>httpx2[ws]</code> extra. Out of scope here because the stdlib server cannot speak the protocol.</p>
+    </div>
+    <div class="card">
+      <span class="tag new">new in httpx2</span>
+      <h3>Drop-in aliasing</h3>
+      <p><code>httpx2.alias_httpx()</code> makes <code>import httpx</code> resolve to httpx2 process-wide, so dependencies still on the old name share one client. Not called here &mdash; it cannot be undone.</p>
+    </div>
+    <div class="card">
+      <span class="tag">carried over</span>
+      <h3>Streaming responses</h3>
+      <p><code>client.stream()</code> hands back chunks as they arrive; touching <code>.text</code> raises rather than silently buffering the body.</p>
+    </div>
+    <div class="card">
+      <span class="tag">carried over</span>
+      <h3>Sync and async, one API</h3>
+      <p><code>AsyncClient</code> mirrors <code>Client</code> method for method, so the concurrent path reuses the same request shapes.</p>
+    </div>
+    <div class="card">
+      <span class="tag">carried over</span>
+      <h3>Timeouts everywhere</h3>
+      <p>A connect/read timeout is set on the client and overridden per request, so a slow endpoint fails fast instead of hanging.</p>
+    </div>
+    <div class="card">
+      <span class="tag">carried over</span>
+      <h3>MockTransport</h3>
+      <p>A handler function stands in for the network, which keeps client-side tests fast and free of port binding.</p>
+    </div>
+  </div>
+</section>
+
+<section id="api">
+  <h2>Endpoints</h2>
+  <p class="sub">Served by <code>src/server.py</code> on <code>127.0.0.1:8080</code>. No schema layer &mdash; plain JSON in, plain JSON out.</p>
+  <div class="card" style="padding: 4px 10px;">
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Path</th><th>Response</th><th>Exercises</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="verb"><span>GET</span></td><td class="path">/health</td><td class="note"><code>{"status": "ok"}</code></td><td class="note">base URL, default headers</td></tr>
+        <tr><td class="verb"><span>GET</span></td><td class="path">/users</td><td class="note">the four seeded users</td><td class="note">JSON decoding</td></tr>
+        <tr><td class="verb"><span>POST</span></td><td class="path">/echo</td><td class="note">the body and the user agent it saw</td><td class="note"><code>json=</code> request bodies</td></tr>
+        <tr><td class="verb"><span>QUERY</span></td><td class="path">/search</td><td class="note">users matching every key in the body</td><td class="note">the QUERY verb</td></tr>
+        <tr><td class="verb"><span>GET</span></td><td class="path">/stream?lines=N</td><td class="note">N chunked plain-text lines</td><td class="note">streamed reads</td></tr>
+        <tr><td class="verb"><span>GET</span></td><td class="path">/events?count=N</td><td class="note">N <code>text/event-stream</code> events</td><td class="note">SSE decoding</td></tr>
+        <tr><td class="verb"><span>GET</span></td><td class="path">/secure</td><td class="note">401 without credentials, else the caller</td><td class="note"><code>BasicAuth</code></td></tr>
+        <tr><td class="verb"><span>GET</span></td><td class="path">/status/{code}</td><td class="note">exactly that status code</td><td class="note"><code>raise_for_status</code></td></tr>
+        <tr><td class="verb"><span>GET</span></td><td class="path">/delay?seconds=N</td><td class="note">ok, after sleeping N seconds</td><td class="note">read timeouts</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="code">
+  <h2>Code</h2>
+  <p class="sub">The whole client is one flat module of small functions &mdash; no wrapper classes, no retry framework.</p>
+
+  <div class="snippet">
+    <div class="bar"><b>src/client.py</b> &mdash; the two calls that only exist in httpx2 <em>python</em></div>
+<pre class="code" data-lang="python">TIMEOUT = httpx2.Timeout(5.0, connect=2.0)
+HEADERS = {"user-agent": "httpx2-poc"}
+
+
+def build(base_url, **kwargs):
+    return httpx2.Client(base_url=base_url, timeout=TIMEOUT, headers=HEADERS, **kwargs)
+
+
+def search(client, criteria):
+    return client.query("/search", json=criteria).raise_for_status().json()["matches"]
+
+
+def events(client, count):
+    with client.sse("/events", params={"count": count}) as source:
+        return [(event.event, event.json()) for event in source]</pre>
+  </div>
+
+  <div class="snippet">
+    <div class="bar"><b>src/server.py</b> &mdash; QUERY is just another handler method <em>python</em></div>
+<pre class="code" data-lang="python">def do_QUERY(self):
+    if urlparse(self.path).path != "/search":
+        self.send_json(404, {"error": "not found"})
+        return
+    criteria = self.read_json()
+    matches = [u for u in USERS if all(u.get(k) == v for k, v in criteria.items())]
+    self.send_json(200, {"matches": matches})</pre>
+  </div>
+
+  <div class="snippet">
+    <div class="bar"><b>tests/test_client.py</b> &mdash; the verb reaches the wire, not just the result <em>python</em></div>
+<pre class="code" data-lang="python">def test_query_is_sent_as_the_query_verb_not_as_a_get(http):
+    response = http.query("/search", json={"lang": "rust"})
+
+    assert response.request.method == "QUERY"
+    assert [u["name"] for u in response.json()["matches"]] == ["graydon"]
+
+
+def test_streaming_yields_chunks_without_buffering_the_body(http):
+    with http.stream("GET", "/stream", params={"lines": 3}) as response:
+        assert "content-length" not in response.headers
+        with pytest.raises(httpx2.ResponseNotRead):
+            response.text
+        assert [line for line in response.iter_lines() if line] == ["line 1", "line 2", "line 3"]</pre>
+  </div>
+</section>
+
+<section id="run">
+  <h2>Run it</h2>
+  <p class="sub">Four scripts, one job each.</p>
+  <div class="snippet">
+    <div class="bar"><b>terminal</b> <em>bash</em></div>
+<pre class="code" data-lang="bash">./build.sh
+./test.sh
+./test-client.sh
+PORT=9000 ./run.sh</pre>
+  </div>
+  <div class="snippet">
+    <div class="bar"><b>./test-client.sh</b> &mdash; actual output <em>output</em></div>
+<pre class="code" data-lang="text">health            {'status': 'ok'}
+users             ['ada', 'linus', 'guido', 'graydon']
+echo              {'received': {'lang': 'python', 'version': '3.14.6'}, 'agent': 'httpx2-poc'}
+query search      ['ada', 'guido']
+stream            ['line 1', 'line 2', 'line 3', 'line 4']
+sse               [('tick', {'seq': 1, ...}), ('tick', {'seq': 2, ...}), ('tick', {'seq': 3, ...})]
+basic auth        {'user': 'admin', 'scope': 'poc'}
+status error      503
+read timeout      True
+async concurrent  ['ok', 'ok', 'ok', 'ok', 'ok']</pre>
+  </div>
+  <div style="margin-top: 22px;">
+    <ul class="plain">
+      <li><b>build.sh</b> creates <code>.venv</code> with Python 3.14.6, installs pinned dependencies, and byte-compiles the sources.</li>
+      <li><b>run.sh</b> starts the stdlib server in the foreground, honouring <code>PORT</code>.</li>
+      <li><b>test.sh</b> runs pytest against a server bound to an ephemeral port inside the suite.</li>
+      <li><b>test-client.sh</b> starts a server if the port is free, walks every client scenario, then shuts it down.</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer>python3-httpx2 &mdash; part of the python-playground</footer>
+
+<script>
+(function () {
+  var RULES = {
+    python: [
+      ["com", /#[^\n]*/],
+      ["str", /f?'(?:\\.|[^'\\])*'|f?"(?:\\.|[^"\\])*"/],
+      ["kw", /\b(?:and|as|assert|async|await|class|def|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|not|or|pass|raise|return|True|try|while|with|yield)\b/],
+      ["num", /\b\d+(?:\.\d+)?\b/],
+      ["fn", /\b[A-Za-z_]\w*(?=\()/]
+    ],
+    bash: [
+      ["com", /#[^\n]*/],
+      ["str", /'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/],
+      ["kw", /\b(?:if|then|else|elif|fi|for|in|do|done|while|case|esac|set|export|local|return|function)\b/],
+      ["var", /\$\{?\w+\}?/],
+      ["num", /\b\d+\b/]
+    ]
+  };
+
+  function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function highlight(line, rules) {
+    if (!rules) return escapeHtml(line);
+    var pattern = new RegExp(rules.map(function (r) { return "(" + r[1].source + ")"; }).join("|"), "g");
+    var out = "";
+    var last = 0;
+    var match;
+    while ((match = pattern.exec(line)) !== null) {
+      out += escapeHtml(line.slice(last, match.index));
+      var cls = "";
+      for (var i = 1; i < match.length; i++) {
+        if (match[i] !== undefined) { cls = rules[i - 1][0]; break; }
+      }
+      out += '<span class="t-' + cls + '">' + escapeHtml(match[0]) + "</span>";
+      last = match.index + match[0].length;
+    }
+    return out + escapeHtml(line.slice(last));
+  }
+
+  document.querySelectorAll("pre.code").forEach(function (block) {
+    var rules = RULES[block.dataset.lang];
+    var lines = block.textContent.replace(/\s+$/, "").split("\n");
+    block.innerHTML = lines.map(function (line, index) {
+      return '<div class="ln"><span class="gutter">' + (index + 1) + '</span>' +
+             '<span class="src">' + (highlight(line, rules) || "&nbsp;") + "</span></div>";
+    }).join("");
+  });
+})();
+</script>
+
+</body>
+</html>
