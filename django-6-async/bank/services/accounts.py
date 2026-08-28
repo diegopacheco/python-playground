@@ -1,19 +1,18 @@
+from asgiref.sync import sync_to_async
+
 from ..domain.errors import NotFound
 from ..models import Account
 
 
-async def get_account(account_id):
-    account = await Account.objects.select_related("profile").filter(pk=account_id).afirst()
+def load_account(account_id):
+    account = Account.objects.select_related("profile").filter(pk=account_id).first()
     if account is None:
         raise NotFound(f"account {account_id} not found")
     return account
 
 
-async def get_account_by_number(number):
-    account = await Account.objects.select_related("profile").filter(number=number).afirst()
-    if account is None:
-        raise NotFound(f"account {number} not found")
-    return account
+async def get_account(account_id):
+    return await sync_to_async(load_account)(account_id)
 
 
 async def list_accounts():

@@ -54,6 +54,40 @@ class LedgerTest(TestCase):
         self.assertEqual(await self.balance(source), Decimal("10.00"))
         self.assertEqual(await self.balance(target), Decimal("10.00"))
 
+    async def test_transfer_rolls_back_the_debit_when_the_credit_fails(self):
+        source = await self.open("Ada Lovelace", "ada@bank.dev", "90.00")
+        target = await self.open("Alan Turing", "alan@bank.dev")
+        original = ledger._credit
+
+        def boom(account, amount):
+            raise RuntimeError("credit failed")
+
+        ledger._credit = boom
+        try:
+            with self.assertRaises(RuntimeError):
+                await ledger.transfer(source, target, Decimal("50.00"))
+        finally:
+            ledger._credit = original
+
+        self.assertEqual(await self.balance(source), Decimal("90.00"))
+        self.assertEqual(await self.balance(target), Decimal("0.00"))
+
+    async def test_money_never_moves_without_a_ledger_row(self):
+        account = await self.open("Ada Lovelace", "ada@bank.dev")
+        original = ledger._record
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("ledger write failed")
+
+        ledger._record = boom
+        try:
+            with self.assertRaises(RuntimeError):
+                await ledger.deposit(account, Decimal("100.00"))
+        finally:
+            ledger._record = original
+
+        self.assertEqual(await self.balance(account), Decimal("0.00"))
+
     async def test_transfer_to_self_is_refused_so_the_statement_stays_meaningful(self):
         account = await self.open("Ada Lovelace", "ada@bank.dev", "10.00")
         with self.assertRaises(ValidationError):

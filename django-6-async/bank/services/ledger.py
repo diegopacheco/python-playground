@@ -1,34 +1,34 @@
 import asyncio
 
+from asgiref.sync import sync_to_async
+from django.db import transaction
 from django.db.models import F
 
 from ..domain.errors import InsufficientFunds, ValidationError
 from ..models import Account, Kind, Transaction
-from .accounts import get_account
+from .accounts import get_account, load_account
 
 _lock = asyncio.Lock()
 
 
-async def _credit(account, amount):
-    await Account.objects.filter(pk=account.pk).aupdate(
-        balance=F("balance") + amount
+def _credit(account, amount):
+    Account.objects.filter(pk=account.pk).update(balance=F("balance") + amount)
+    return load_account(account.pk)
+
+
+def _debit(account, amount):
+    changed = Account.objects.filter(pk=account.pk, balance__gte=amount).update(
+        balance=F("balance") - amount
     )
-    return await get_account(account.pk)
-
-
-async def _debit(account, amount):
-    changed = await Account.objects.filter(
-        pk=account.pk, balance__gte=amount
-    ).aupdate(balance=F("balance") - amount)
     if changed == 0:
         raise InsufficientFunds(
             f"account {account.number} has {account.balance}, cannot withdraw {amount}"
         )
-    return await get_account(account.pk)
+    return load_account(account.pk)
 
 
-async def _record(account, kind, amount, counterparty=None):
-    return await Transaction.objects.acreate(
+def _record(account, kind, amount, counterparty=None):
+    return Transaction.objects.create(
         account=account,
         counterparty=counterparty,
         kind=kind,
@@ -37,30 +37,45 @@ async def _record(account, kind, amount, counterparty=None):
     )
 
 
+@transaction.atomic
+def _deposit(account_id, amount):
+    account = _credit(load_account(account_id), amount)
+    return _record(account, Kind.DEPOSIT, amount)
+
+
+@transaction.atomic
+def _withdraw(account_id, amount):
+    account = _debit(load_account(account_id), amount)
+    return _record(account, Kind.WITHDRAW, amount)
+
+
+@transaction.atomic
+def _transfer(source_id, target_id, amount):
+    source = load_account(source_id)
+    target = load_account(target_id)
+    source = _debit(source, amount)
+    target = _credit(target, amount)
+    return (
+        _record(source, Kind.TRANSFER_OUT, amount, counterparty=target),
+        _record(target, Kind.TRANSFER_IN, amount, counterparty=source),
+    )
+
+
 async def deposit(account_id, amount):
     async with _lock:
-        account = await _credit(await get_account(account_id), amount)
-        return await _record(account, Kind.DEPOSIT, amount)
+        return await sync_to_async(_deposit)(account_id, amount)
 
 
 async def withdraw(account_id, amount):
     async with _lock:
-        account = await _debit(await get_account(account_id), amount)
-        return await _record(account, Kind.WITHDRAW, amount)
+        return await sync_to_async(_withdraw)(account_id, amount)
 
 
 async def transfer(source_id, target_id, amount):
     if source_id == target_id:
         raise ValidationError("source and target accounts must be different")
     async with _lock:
-        source = await get_account(source_id)
-        target = await get_account(target_id)
-        source = await _debit(source, amount)
-        target = await _credit(target, amount)
-        return (
-            await _record(source, Kind.TRANSFER_OUT, amount, counterparty=target),
-            await _record(target, Kind.TRANSFER_IN, amount, counterparty=source),
-        )
+        return await sync_to_async(_transfer)(source_id, target_id, amount)
 
 
 async def statement(account_id, limit=25):

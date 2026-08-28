@@ -6,9 +6,9 @@ A small retail-banking app: open a profile, deposit, withdraw, transfer money be
 
 The browser loads one Django template and a handful of vanilla-JS ES modules. All state changes go through `fetch` calls to a JSON API; there are no full page reloads and no frontend framework.
 
-Every request is served by uvicorn on a single event loop. A URL resolves to an `async def` view, which validates input against the pure-Python `bank/domain` layer, then awaits a service in `bank/services`. Services talk to the database through Django's async ORM (`aget`, `acreate`, `aupdate`, `aiterator`) — never through a thread pool.
+Every request is served by uvicorn on a single event loop. A URL resolves to an `async def` view, which validates input against the pure-Python `bank/domain` layer, then awaits a service in `bank/services`. Services reach the database through Django's async ORM (`aget`, `acreate`, `aupdate`, `aiterator`). Those are wrappers, not a native async driver — `aget` is literally `await sync_to_async(self.get)(...)` — so the SQLite call runs on a thread and the event loop stays free. Django 6.1 has no async database backend. Nothing in this codebase calls `sync_to_async` itself, but the ORM does it on every query.
 
-Money movement lives in one place: `bank/services/ledger.py`. It holds an `asyncio.Lock` for the duration of a deposit, withdrawal or transfer, and debits with a conditional `UPDATE ... WHERE balance >= amount` so an overdraft is rejected by the database itself rather than by a read-then-write race.
+Money movement lives in one place: `bank/services/ledger.py`. Each operation is a sync function wrapped in `transaction.atomic` and awaited once through `sync_to_async`, so the balance change and its ledger row commit together or not at all. Debits use a conditional `UPDATE ... WHERE balance >= amount`, so an overdraft is rejected by the database itself rather than by a read-then-write race.
 
 Every movement appends a `Transaction` row carrying the balance *after* it, so the statement is a replayable audit trail instead of a derived guess.
 
@@ -30,7 +30,7 @@ bank/models/            one model per file
   transaction.py        Transaction + Kind
 bank/services/          async use cases
   profiles.py           open a profile and its account
-  accounts.py           account lookups
+  accounts.py           account lookups (sync loader + async readers)
   ledger.py             deposit, withdraw, transfer, statement
 bank/api/               json api
   http.py               body parsing, field checks, the @endpoint decorator
@@ -51,6 +51,7 @@ tests/                  domain, ledger and api suites
 * **Transfer** — debits and credits under one lock and writes both sides of the movement, so a statement always shows the counterparty by name.
 * **Statement** — newest-first history with running balances, so past rows explain how today's number was reached.
 * **Overdraft protection** — a single invariant enforced in one function rather than sprinkled across views.
+* **Atomic money movement** — every operation commits its balance change and its ledger row in one transaction, so a mid-flight failure leaves nothing behind.
 * **Typed errors** — every domain exception carries its own HTTP status, so views never map error strings to codes.
 
 ## Stack
@@ -110,7 +111,16 @@ curl -X POST http://127.0.0.1:8000/api/transfers/ \
 
 **Overdraft is a database predicate.** The debit is `filter(pk=..., balance__gte=amount).aupdate(balance=F("balance") - amount)`. Zero rows updated means insufficient funds. There is no read-then-write window to lose.
 
-**Serialisation via `asyncio.Lock`, not `transaction.atomic`.** Django 6.1 ships async querysets but no async `atomic()` — the only way to get one is to bounce the whole unit of work into a thread with `sync_to_async`, which would break the all-async requirement. The lock plus the conditional `UPDATE` gives correct behaviour under concurrent requests in one process, which is what this app runs as. The honest limit: it does not survive a process crash mid-transfer, and it does not serialise across multiple worker processes. Moving to PostgreSQL with `SELECT ... FOR UPDATE` is the next step if this ever needed more than one worker.
+**Writes are transactional, reads are natively async.** Django 6.1 ships async querysets but no async `atomic()`. So the split is deliberate and consistent:
+
+* **Writes** — `_deposit`, `_withdraw` and `_transfer` are plain sync functions decorated with `@transaction.atomic`, awaited once via `sync_to_async`. One thread hop per operation, one transaction, real rollback.
+* **Reads** — `statement`, `list_accounts` and `get_account` use the async ORM directly.
+
+Wrapping the unit of work rather than each query also means *fewer* thread hops than calling four `aupdate`/`acreate` methods, not more, because Django's async ORM hops per call anyway.
+
+This is what makes the invariant hold: if anything raises between the debit and the credit, the whole transfer rolls back. `test_transfer_rolls_back_the_debit_when_the_credit_fails` and `test_money_never_moves_without_a_ledger_row` pin it down — both fail if the `@transaction.atomic` decorator is removed.
+
+**The `asyncio.Lock` is belt-and-braces, not the guarantee.** The transaction is what makes money movement correct. The lock serialises writers in-process to avoid SQLite `database is locked` contention. It is coroutine-safe on one event loop, **not** thread-safe and not shared across processes — `run.sh` starts a single uvicorn worker, so it holds; `--workers 2` would give each process its own lock. Correctness would survive that, since the transaction and the conditional `UPDATE` are enforced by the database; throughput and the `database is locked` behaviour would not.
 
 **Errors carry their status.** `BankError` subclasses declare `status`, and the `@endpoint` decorator turns any of them into the right JSON response. Views contain no error mapping.
 
@@ -143,20 +153,22 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 ./test.sh
 ```
 
-29 tests across three suites: `tests/test_domain.py` (no database), `tests/test_ledger.py` (async services) and `tests/test_api.py` (async HTTP client).
+31 tests across three suites: `tests/test_domain.py` (no database), `tests/test_ledger.py` (async services) and `tests/test_api.py` (async HTTP client).
 
 ```
-Found 29 test(s).
+Found 31 test(s).
 test_creating_a_profile_returns_the_account_it_opened ... ok
 test_deposit_then_withdraw_reports_running_balances ... ok
 test_overdraft_is_rejected_with_conflict_not_a_server_error ... ok
 test_transfer_reports_both_sides_of_the_movement ... ok
 test_concurrent_withdrawals_never_overdraw_the_account ... ok
 test_transfer_moves_money_without_creating_or_destroying_any ... ok
+test_transfer_rolls_back_the_debit_when_the_credit_fails ... ok
+test_money_never_moves_without_a_ledger_row ... ok
 test_failed_transfer_leaves_both_sides_untouched ... ok
 ...
 ----------------------------------------------------------------------
-Ran 29 tests in 0.092s
+Ran 31 tests in 0.077s
 
 OK
 ```
