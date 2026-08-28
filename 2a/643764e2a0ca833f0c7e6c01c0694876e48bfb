@@ -1,0 +1,112 @@
+django-6-async/README.md
+  s_57cf58a7704230::t_9210a21eb0adb3 1-204
+django-6-async/bank/services/__init__.py
+  s_57cf58a7704230::t_c86dc7f21e4a3e 1-3
+django-6-async/requirements.txt
+  s_57cf58a7704230::t_8d39fbcb7eb11f 1-2
+django-6-async/bank/static/bank/js/ui/money.js
+  s_57cf58a7704230::t_7dad899b5821f8 42-43
+  s_57cf58a7704230::t_d944d2b079af73 1-41,44-55
+django-6-async/config/urls.py
+  s_57cf58a7704230::t_2ed373dee0efba 1,7
+  s_57cf58a7704230::t_8d39fbcb7eb11f 2-6
+django-6-async/config/settings.py
+  s_57cf58a7704230::t_8d39fbcb7eb11f 1-42
+django-6-async/manage.py
+  s_57cf58a7704230::t_8d39fbcb7eb11f 1-9
+django-6-async/bank/api/views/accounts.py
+  s_57cf58a7704230::t_fa536956e12060 1-37
+django-6-async/bank/api/presenters.py
+  s_57cf58a7704230::t_29e13d7787cdec 1-33
+django-6-async/.gitignore
+  s_57cf58a7704230::t_ac394124bec99f 1-5
+django-6-async/bank/services/accounts.py
+  s_57cf58a7704230::t_c86dc7f21e4a3e 1-21
+django-6-async/bank/services/ledger.py
+  s_57cf58a7704230::t_f491346fde0df0 6,13,20
+  s_57cf58a7704230::t_c86dc7f21e4a3e 1-5,7-12,14-19,21-71
+django-6-async/bank/apps.py
+  s_57cf58a7704230::t_8d39fbcb7eb11f 1-5
+django-6-async/bank/static/bank/js/ui/profile.js
+  s_57cf58a7704230::t_848e6b883c890f 1-46
+django-6-async/test.sh
+  s_57cf58a7704230::t_ac394124bec99f 1-4
+django-6-async/bank/domain/money.py
+  s_57cf58a7704230::t_ce39138ce8c1d3 1-23
+django-6-async/config/asgi.py
+  s_57cf58a7704230::t_8d39fbcb7eb11f 1-7
+django-6-async/bank/api/http.py
+  s_57cf58a7704230::t_29e13d7787cdec 1-47
+django-6-async/bank/api/views/transfers.py
+  s_57cf58a7704230::t_fa536956e12060 1-18
+django-6-async/bank/templates/bank/index.html
+  s_57cf58a7704230::t_561d83af364819 1-97
+django-6-async/stop.sh
+  s_57cf58a7704230::t_ac394124bec99f 1-2
+django-6-async/run.sh
+  s_57cf58a7704230::t_ac394124bec99f 1-6
+django-6-async/bank/static/bank/js/format.js
+  s_57cf58a7704230::t_d79273d502cb38 1-22
+django-6-async/bank/static/bank/js/api.js
+  s_57cf58a7704230::t_d79273d502cb38 1-27
+django-6-async/bank/api/views/profiles.py
+  s_57cf58a7704230::t_fa536956e12060 1-19
+django-6-async/bank/static/bank/js/store.js
+  s_57cf58a7704230::t_d79273d502cb38 1-28
+django-6-async/bank/web/urls.py
+  s_57cf58a7704230::t_fa536956e12060 1-5
+django-6-async/bank/domain/identity.py
+  s_57cf58a7704230::t_ce39138ce8c1d3 1-26
+django-6-async/bank/services/profiles.py
+  s_57cf58a7704230::t_c86dc7f21e4a3e 1-25
+django-6-async/bank/static/bank/js/ui/tabs.js
+  s_57cf58a7704230::t_848e6b883c890f 1-12
+django-6-async/bank/domain/errors.py
+  s_57cf58a7704230::t_ce39138ce8c1d3 1-18
+django-6-async/bank/static/bank/js/ui/flash.js
+  s_57cf58a7704230::t_848e6b883c890f 1-12
+django-6-async/build.sh
+  s_57cf58a7704230::t_ac394124bec99f 1-8
+django-6-async/tests/test_domain.py
+  s_57cf58a7704230::t_d99efa28f02a77 1-45
+django-6-async/bank/static/bank/js/ui/history.js
+  s_57cf58a7704230::t_d944d2b079af73 1-20
+django-6-async/bank/api/urls.py
+  s_57cf58a7704230::t_fa536956e12060 1-14
+django-6-async/bank/web/views.py
+  s_57cf58a7704230::t_fa536956e12060 1-7
+django-6-async/bank/static/bank/css/app.css
+  s_57cf58a7704230::t_a349fc7b7911eb 1-142
+django-6-async/bank/static/bank/js/app.js
+  s_57cf58a7704230::t_d944d2b079af73 1-18
+django-6-async/bank/migrations/0001_initial.py
+  s_57cf58a7704230::t_991dbbac4c9afe 1-53
+django-6-async/bank/models/__init__.py
+  s_57cf58a7704230::t_9636739b151a96 1-5
+django-6-async/bank/models/account.py
+  s_57cf58a7704230::t_7d67ce34b544e9 1-13
+django-6-async/bank/models/profile.py
+  s_57cf58a7704230::t_d0b10c16d60104 1-13
+django-6-async/bank/models/transaction.py
+  s_57cf58a7704230::t_703810f0d67526 1-28
+django-6-async/tests/test_api.py
+  s_57cf58a7704230::t_b5c647bc53eaf8 1-94
+django-6-async/tests/test_ledger.py
+  s_57cf58a7704230::t_7d9ddc382964fe 1-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "2a643764e2a0ca833f0c7e6c01c0694876e48bfb",
+  "prompts": {},
+  "sessions": {
+    "s_57cf58a7704230": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1bb733cf-06e3-466e-a1d4-7b8bb07e2480",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
