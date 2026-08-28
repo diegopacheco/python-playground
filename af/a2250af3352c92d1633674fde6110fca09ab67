@@ -1,0 +1,50 @@
+python3-httpx2/test-client.sh
+  s_9bd2d85721d399::t_576f1150a38111 1-26
+python3-httpx2/index.html
+  s_9bd2d85721d399::t_d38b767b607156 201
+  s_9bd2d85721d399::t_bb9e1899b124ad 1-200,202-391
+python3-httpx2/src/client.py
+  s_9bd2d85721d399::t_e6a536817b35e6 1-64
+python3-httpx2/src/main.py
+  s_9bd2d85721d399::t_e6a536817b35e6 1-23
+python3-httpx2/tests/test_client.py
+  s_9bd2d85721d399::t_0bfcc060b2d5bd 1-84
+python3-httpx2/tests/conftest.py
+  s_9bd2d85721d399::t_55c9c14d151fff 1-25
+python3-httpx2/src/server.py
+  s_9bd2d85721d399::t_04df406b3fa094 1-134
+python3-httpx2/README.md
+  s_9bd2d85721d399::t_181659017db175 1-37,39-153
+  s_9bd2d85721d399::t_20758db315d583 38
+python3-httpx2/run.sh
+  s_9bd2d85721d399::t_1f81953f41aece 1-5
+python3-httpx2/CHANGELOG.md
+  s_9bd2d85721d399::t_cc60181a9fae2b 1-24
+python3-httpx2/requirements.txt
+  s_9bd2d85721d399::t_d0a718e5ae1067 1-2
+python3-httpx2/architecture.svg
+  s_9bd2d85721d399::t_c37a5aba5a8a7c 1-19,21-22,24-42,46-59,62-63
+  s_9bd2d85721d399::t_d7ae8662d837fe 20,23,43-45,60-61
+python3-httpx2/test.sh
+  s_9bd2d85721d399::t_72006aef57d7c4 1-4
+python3-httpx2/build.sh
+  s_9bd2d85721d399::t_b5877da42b4f7f 1-10
+python3-httpx2/.gitignore
+  s_9bd2d85721d399::t_8488ecbee1d3e4 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "afa2250af3352c92d1633674fde6110fca09ab67",
+  "prompts": {},
+  "sessions": {
+    "s_9bd2d85721d399": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "365e2ae8-f4a5-4e42-91a6-0ec238351cb7",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
