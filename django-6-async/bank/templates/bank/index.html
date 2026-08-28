@@ -1,0 +1,97 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Async Bank</title>
+<link rel="stylesheet" href="{% static 'bank/css/app.css' %}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark">◎</span> Async Bank</div>
+  <div class="tag">Django 6.1 · Python 3.14 · async/await</div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <label class="field">
+      <span>Signed in as</span>
+      <select id="profile-picker"></select>
+    </label>
+
+    <section class="balance-card" id="balance-card">
+      <p class="owner" id="card-owner">—</p>
+      <p class="number" id="card-number">—</p>
+      <p class="amount"><span class="currency">$</span><span id="card-balance">0.00</span></p>
+    </section>
+
+    <form class="panel" id="create-form">
+      <h2>New profile</h2>
+      <label class="field"><span>Full name</span><input name="full_name" placeholder="Ada Lovelace" required></label>
+      <label class="field"><span>Email</span><input name="email" type="email" placeholder="ada@bank.dev" required></label>
+      <button class="primary" type="submit">Open account</button>
+    </form>
+  </aside>
+
+  <section class="content">
+    <nav class="tabs" id="tabs">
+      <button class="tab" data-tab="profile">Profile</button>
+      <button class="tab" data-tab="deposit">Deposit</button>
+      <button class="tab" data-tab="withdraw">Withdraw</button>
+      <button class="tab" data-tab="transfer">Transfer</button>
+      <button class="tab" data-tab="history">History</button>
+    </nav>
+
+    <div id="flash" class="flash" hidden></div>
+
+    <section class="pane" data-pane="profile">
+      <h2>Profile</h2>
+      <dl class="details">
+        <dt>Name</dt><dd id="detail-name">—</dd>
+        <dt>Email</dt><dd id="detail-email">—</dd>
+        <dt>Account</dt><dd id="detail-number">—</dd>
+        <dt>Balance</dt><dd id="detail-balance">—</dd>
+        <dt>Customer since</dt><dd id="detail-since">—</dd>
+      </dl>
+    </section>
+
+    <section class="pane" data-pane="deposit">
+      <h2>Deposit</h2>
+      <form id="deposit-form" class="money-form">
+        <label class="field"><span>Amount</span><input name="amount" type="number" step="0.01" min="0.01" placeholder="100.00" required></label>
+        <button class="primary" type="submit">Deposit</button>
+      </form>
+    </section>
+
+    <section class="pane" data-pane="withdraw">
+      <h2>Withdraw</h2>
+      <form id="withdraw-form" class="money-form">
+        <label class="field"><span>Amount</span><input name="amount" type="number" step="0.01" min="0.01" placeholder="40.00" required></label>
+        <button class="primary" type="submit">Withdraw</button>
+      </form>
+    </section>
+
+    <section class="pane" data-pane="transfer">
+      <h2>Transfer</h2>
+      <form id="transfer-form" class="money-form">
+        <label class="field"><span>To account</span><select name="target_account_id" id="transfer-target" required></select></label>
+        <label class="field"><span>Amount</span><input name="amount" type="number" step="0.01" min="0.01" placeholder="25.00" required></label>
+        <button class="primary" type="submit">Send money</button>
+      </form>
+    </section>
+
+    <section class="pane" data-pane="history">
+      <h2>History</h2>
+      <table class="ledger">
+        <thead><tr><th>When</th><th>Type</th><th>Counterparty</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+      <p class="empty" id="ledger-empty" hidden>No transactions yet.</p>
+    </section>
+  </section>
+</main>
+
+<script type="module" src="{% static 'bank/js/app.js' %}"></script>
+</body>
+</html>
