@@ -2001,3 +2001,35 @@ async def test_the_schema_refuses_a_balance_that_is_not_a_number(bank: BankServi
         await force_a_nan()
 
     assert (await bank.get_account(account.id)).balance == Decimal("10.00")
+
+
+async def test_a_cancellation_racing_the_commit_cannot_split_a_transfer(
+    bank: BankService,
+):
+    """The one window the boundary cannot close, pinned for what it can promise inside
+    it. A cancellation that lands after the method returned races the COMMIT already on
+    its way to postgres, and the server decides the outcome: some of these transfers
+    commit while their caller is told the call was cancelled. What must never happen is
+    a transfer that is half of one - money moved with no ledger row, or a debit with no
+    credit - or the other direction, a boundary that returned and did not commit. Every
+    transfer here is 1.00, so the ledger row count is the money that moved."""
+    source = (await bank.open_account("alice", Decimal("100.00"))).id
+    target = (await bank.open_account("bob", Decimal("0.00"))).id
+    returned = 0
+
+    for attempt in range(60):
+        call = asyncio.create_task(bank.transfer(source, target, Decimal("1.00")))
+        await asyncio.sleep(attempt / 60 * 0.020)
+        call.cancel()
+        try:
+            await call
+            returned += 1
+        except asyncio.CancelledError:
+            pass
+
+    accounts = {account.owner: account.balance for account in await bank.list_accounts()}
+    committed = len(await bank.list_ledger())
+
+    assert accounts["bob"] == Decimal(committed)
+    assert accounts["alice"] + accounts["bob"] == Decimal("100.00")
+    assert returned <= committed
