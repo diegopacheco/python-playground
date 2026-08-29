@@ -244,7 +244,7 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
         <tr><td>Joined call cancelled, caller swallows it</td><td>rollback-only</td>
             <td>rollback-only, CancelledError is caught even though it is not an Exception</td></tr>
         <tr><td>Transaction reused from another thread or task</td><td>a new thread simply has none</td>
-            <td>CrossTaskTransaction, a spawned task is refused the inherited session</td></tr>
+            <td>CrossTaskTransaction, a spawned task or to_thread() worker is refused the inherited session, and the captured one</td></tr>
         <tr><td>Database error swallowed without crossing a proxy</td><td>commit fails, the caller is told</td>
             <td>UnexpectedRollback, the session recorded the DBAPIError that poisoned it</td></tr>
         <tr><td>Business code commits the connection itself</td><td>possible, the boundary cannot stop it</td>

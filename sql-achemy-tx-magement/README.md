@@ -111,7 +111,7 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it — through the lookup, and through the wrapper itself, so capturing the session and handing the object over is refused too.
 - **Cancellation is a rollback** — a joined call killed by a timeout poisons the transaction, and so does a statement cancelled inside a plain DAO call, so a caller that swallows the `TimeoutError` still cannot commit either way.
 - **Fails loud outside a boundary** — DAO access with no open transaction, or through a session kept past its boundary, raises `NoActiveTransaction` instead of auto-committing, and `@transactional` on a function that is not `async def` is a `TypeError` at import rather than a confusing one at call time.
-- **UI that shows the boundary** — every action prints COMMIT or ROLLBACK with the balances before and after.
+- **UI that shows the boundary** — every action prints COMMIT or ROLLBACK with the balances before and after, and the annotated `tx.py` on the *How it works* tab is pinned to the real file by a test, so the page cannot drift into documenting a boundary nobody is running.
 - **Postgres 18 in podman** — the database starts, waits for readiness and stops from scripts, nothing installed on the host.
 
 ## Stack
@@ -261,7 +261,7 @@ Honest limits, since this is a POC and not a payment system:
 - A swallowed database error is caught either way, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints. Caught through a `@transactional` call it is rollback-only; caught straight off a DAO the session recorded it anyway. Both end as `UnexpectedRollback` rather than a confusing SQLAlchemy state error or, worse, a quiet success.
 - `withdraw()` and `deposit()` re-lock the row they were handed, because both are callable on their own and have to be safe that way. A transfer therefore spends six round trips where four would do. The redundant locks are already held, so they cost latency and never risk.
 - The lock is per account row, so unrelated accounts never block each other, but a hot account serialises every transfer that touches it. That is the intended trade: correctness first.
-- The refusals in `BoundarySession` are a guard against a mistake, not a security boundary. The block list covers every session method that can end or split the transaction, `run_sync` included, but business code that reaches past it — `_session`, or a raw `COMMIT` or `ROLLBACK` string — still splits the boundary, and neither the rollback-only flag nor the liveness check will notice. A raw `ROLLBACK` is the sharp one: SQLAlchemy still reports the transaction active, so the boundary reports success for work Postgres discarded. Python has no way to prevent that; the tests pin the mistakes people actually make.
+- The refusals in `BoundarySession` are a guard against a mistake, not a security boundary. The block list covers every session method that can end or split the transaction or hand out the sync `Session` under it — `run_sync`, `_proxied` and `get_bind` included — but business code that reaches past it — `_session`, or a raw `COMMIT` or `ROLLBACK` string — still splits the boundary, and neither the rollback-only flag nor the liveness check will notice. A raw `ROLLBACK` is the sharp one: SQLAlchemy still reports the transaction active, so the boundary reports success for work Postgres discarded. Python has no way to prevent that; the tests pin the mistakes people actually make.
 - A task spawned inside a boundary is refused the session, and the refusal is total: it cannot open a transaction of its own either. `asyncio.gather()` of two service calls, `asyncio.shield()`, a `TaskGroup` and any background work all raise `CrossTaskTransaction` from inside a boundary, and a fire-and-forget `create_task()` fails where nobody retrieves the exception while the boundary commits around it. Fan-out has to start outside the boundary, or after it returns.
 - Streaming is refused rather than guarded. `stream()` and `stream_scalars()` are the only session calls whose failure the boundary cannot observe, so a project that needs server-side cursors has to proxy the result object before it can have both.
 - The schema is `create_all`, not migrations. The constraints are DDL, so a database created before them keeps the old shape; `podman-compose down -v` once is what applies them to an existing volume.
@@ -472,7 +472,7 @@ Swagger UI at `/docs`, generated from the controller. Every route here is exactl
 ./build.sh         # venv with python3.14 and dependencies
 ./start.sh         # postgres 18 in podman, then the app on http://localhost:8000
 ./test-client.sh   # a commit and two rollbacks over HTTP, with balances after each
-./test.sh          # 61 tests against a real postgres, in a separate database
+./test.sh          # 70 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
 
@@ -499,6 +499,9 @@ tests/test_api.py::test_an_account_id_outside_the_column_range_is_rejected PASSE
 tests/test_api.py::test_a_sub_cent_amount_is_rejected PASSED
 tests/test_api.py::test_an_amount_too_large_for_the_column_is_rejected PASSED
 tests/test_api.py::test_a_request_that_cannot_get_a_connection_is_unavailable_not_a_crash PASSED
+tests/test_api.py::test_a_non_finite_amount_is_rejected_by_the_request_model PASSED
+tests/test_api.py::test_a_poisoned_transaction_reaching_the_controller_names_its_cause PASSED
+tests/test_api.py::test_the_how_it_works_page_shows_the_decorator_that_ships PASSED
 tests/test_contention.py::test_concurrent_withdrawals_cannot_overdraw_the_account PASSED
 tests/test_contention.py::test_concurrent_deposits_do_not_lose_updates PASSED
 tests/test_contention.py::test_transfers_in_opposite_directions_do_not_deadlock PASSED
@@ -551,6 +554,12 @@ tests/test_transaction_boundary.py::test_business_code_cannot_reach_the_sync_ses
 tests/test_transaction_boundary.py::test_every_way_of_ending_the_transaction_is_refused PASSED
 tests/test_transaction_boundary.py::test_a_swallowed_cancellation_at_the_session_cannot_be_committed_over PASSED
 tests/test_transaction_boundary.py::test_transactional_refuses_a_function_that_is_not_async PASSED
+tests/test_transaction_boundary.py::test_a_captured_session_cannot_be_driven_from_a_spawned_task PASSED
+tests/test_transaction_boundary.py::test_a_spawned_task_cannot_write_through_a_captured_session PASSED
+tests/test_transaction_boundary.py::test_a_captured_session_cannot_be_driven_from_a_thread PASSED
+tests/test_transaction_boundary.py::test_the_three_names_for_the_sync_session_are_all_refused PASSED
+tests/test_transaction_boundary.py::test_the_stream_refusal_cannot_be_routed_around_through_execute PASSED
+tests/test_transaction_boundary.py::test_a_missing_account_is_refused_even_when_the_ids_are_a_generator PASSED
 
-61 passed
+70 passed
 ```
