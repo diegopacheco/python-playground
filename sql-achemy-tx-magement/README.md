@@ -4,6 +4,97 @@ A small bank running on Python 3.14.6 where the transaction boundary is a single
 all `async`/`await`, and `@transactional` on the service methods. If the method returns, the transaction commits. If it
 raises, the whole thing rolls back. Nothing in the controller, the DAO or the models knows a session exists.
 
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Is this the same as Spring @Transactional?](#is-this-the-same-as-spring-transactional)
+- [Printscreens](#printscreens)
+- [How it Works?](#how-it-works-1)
+- [Features](#features)
+- [Stack](#stack)
+- [APIs](#apis)
+- [Race Conditions and Contention](#race-conditions-and-contention)
+- [Key Design Decisions](#key-design-decisions)
+- [How to Run](#how-to-run)
+- [Swagger](#swagger)
+- [How to Run the Tests](#how-to-run-the-tests)
+
+## Architecture
+
+![Architecture](printscreens/architecture.png)
+
+## Is this the same as Spring @Transactional?
+
+For the default Spring settings, yes on everything that matters. The differences are listed honestly below.
+
+| Behaviour | Spring | Here |
+| --- | --- | --- |
+| Default propagation | `REQUIRED` | `REQUIRED`, the only mode implemented |
+| Commit | method returns | method returns |
+| Rollback | unchecked exceptions only | any exception; Python has no checked exceptions |
+| Joined call fails, caller swallows it and returns | rollback-only, then `UnexpectedRollbackException` | rollback-only, then `UnexpectedRollback` |
+| Joined call fails, caller swallows it and then raises something else | the later exception propagates, the first is lost | `UnexpectedRollback`; the first is the `__cause__`, the later one the `__context__` |
+| Nested call opens a second transaction | no, it joins | no, it joins |
+| Self-invocation | bypasses the proxy, so no transaction at all | still participates; the decorator wraps the function itself |
+| Transaction is bound to | the thread (`ThreadLocal`) | the asyncio task (`ContextVar`) |
+| Joined call cancelled, caller swallows it | rollback-only | rollback-only, `CancelledError` is not an `Exception` but is still caught |
+| Statement cancelled inside a DAO call, caller swallows it | no equivalent; a thread interrupt is not a rollback signal | rollback-only, the session records the `CancelledError` |
+| Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task or `to_thread()` worker is refused the inherited session, and refused the captured one |
+| Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the session recorded the `DBAPIError` that poisoned it |
+| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session name that could, `run_sync`, `_proxied`, `object_session`, `_proxy_objects`, `get_bind` and `bind` included, on reads, assignments and deletions alike, and on what an allowed name carries: `no_autoflush` hands out a wrapper rather than the sync `Session` it yields; a commit through the `Connection` a result object carries is caught at the end as `UnexpectedRollback`, by identity and not merely by "some transaction is open", and one made on psycopg's own connection under it, or as a raw `COMMIT` or `ROLLBACK` string, is caught by asking the driver; reaching around it through `_session` or onto a second connection still works |
+| `REQUIRES_NEW`, `NESTED`, `SUPPORTS`, `MANDATORY` | supported | not implemented |
+| `readOnly`, `isolation`, `timeout` | supported | not implemented |
+
+Four of those deserve a sentence.
+
+**Self-invocation is where this beats Spring.** Spring's `@Transactional` is a proxy, so `this.withdraw()` inside
+`transfer()` never reaches it, which is the framework's most famous gotcha. Here the decorator wraps the function object,
+so a self-call participates like any other call. With `REQUIRED` the observable result is the same whenever the outer
+method is itself transactional, and strictly safer when it is not.
+
+**Participation makes get-or-create impossible, and that is Spring too.** Writing
+`try: await bank.get_account(id) except AccountNotFound: await bank.open_account(...)` inside a boundary raises
+`UnexpectedRollback`, even though `AccountNotFound` never reached the database and nothing was left in a state that
+could not be committed. The joined call raised, so the transaction is rollback-only, and Spring's `REQUIRED` does
+exactly this to a caught `RuntimeException`. It is the most surprising consequence of the rule and the first thing a
+reader will trip over, so it is worth saying out loud: an exception used as control flow across a `@transactional`
+call is still a failure of that transaction. The fix here is the one it is in Spring — do not cross the boundary for
+the lookup. `await self.accounts.find(id)` is a DAO call inside the transaction already open, it joins nothing, and a
+`None` back from it is not an exception at all.
+
+**Rollback rules are simpler on purpose.** Spring distinguishes checked from unchecked exceptions because Java has both.
+Python does not, so every exception rolls back, which is what `rollbackFor = Exception.class` gives you in Java anyway.
+
+**A poisoned transaction reports the poison, not the symptom.** If a joined call fails, the caller swallows it, and the
+caller then hits a second error, Spring propagates the second one and the first is gone. Here the first is the
+`__cause__` of the `UnexpectedRollback` and the second is its `__context__`, so the traceback shows both and the one
+that actually made the transaction unusable is the headline. This is a deliberate divergence, not an accident, and
+`test_unexpected_rollback_names_the_exception_that_poisoned_it` pins it.
+
+The propagation claims are not assertions in prose; they are what `tests/test_transaction_boundary.py` checks by
+capturing the session object at each layer and comparing identities.
+
+## Printscreens
+
+### Bank
+
+![Bank tab](printscreens/ui-bank.png)
+
+Four service calls, top to bottom in the log. `open_account("dave", 0.00)` and `transfer(6 -> 7, 30.00)` committed, so
+carol is down to 70.00 and dave holds 30.00. Then `transfer(6 -> 7, 5000.00)` failed on insufficient funds: the log
+prints the balances before and after and they are identical, and no ledger row appeared even though one had already been
+inserted and flushed. `withdraw(7, 9999.00)` failed the same way. The account table is the state Postgres actually holds,
+re-read after every call.
+
+### How it works
+
+![How it works tab](printscreens/ui-how.png)
+
+The decorator and the `transfer()` method with line numbers, annotated line by line: where propagation is decided, where
+rollback-only is set, where the boundary opens, and where the commit is refused. Below them the contention card shows
+the `FOR UPDATE` lock and the ascending lock order with the numbers from the failing run, and the last card is the
+Spring comparison table above.
+
 ## How it Works?
 
 `tx.py` keeps an `AsyncSession` in a `ContextVar`. When a `@transactional` method is called and the context variable is
@@ -211,10 +302,6 @@ the difference between a boundary that returns success for discarded work and on
 Commit and rollback themselves come from `async with session.begin()`. SQLAlchemy commits on a clean exit and rolls back
 on any exception, so the decorator has no `try/except` around business logic and never swallows an error.
 
-## Architecture
-
-![Architecture](printscreens/architecture.png)
-
 ## Features
 
 - **One decorator marks the boundary** — `@transactional` on a service method is the only transaction code in the project.
@@ -298,57 +385,6 @@ curl -X POST http://localhost:8000/api/transfers \
   -H 'Content-Type: application/json' \
   -d '{"source_id":1,"target_id":2,"amount":"30.00"}'
 ```
-
-## Is this the same as Spring @Transactional?
-
-For the default Spring settings, yes on everything that matters. The differences are listed honestly below.
-
-| Behaviour | Spring | Here |
-| --- | --- | --- |
-| Default propagation | `REQUIRED` | `REQUIRED`, the only mode implemented |
-| Commit | method returns | method returns |
-| Rollback | unchecked exceptions only | any exception; Python has no checked exceptions |
-| Joined call fails, caller swallows it and returns | rollback-only, then `UnexpectedRollbackException` | rollback-only, then `UnexpectedRollback` |
-| Joined call fails, caller swallows it and then raises something else | the later exception propagates, the first is lost | `UnexpectedRollback`; the first is the `__cause__`, the later one the `__context__` |
-| Nested call opens a second transaction | no, it joins | no, it joins |
-| Self-invocation | bypasses the proxy, so no transaction at all | still participates; the decorator wraps the function itself |
-| Transaction is bound to | the thread (`ThreadLocal`) | the asyncio task (`ContextVar`) |
-| Joined call cancelled, caller swallows it | rollback-only | rollback-only, `CancelledError` is not an `Exception` but is still caught |
-| Statement cancelled inside a DAO call, caller swallows it | no equivalent; a thread interrupt is not a rollback signal | rollback-only, the session records the `CancelledError` |
-| Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task or `to_thread()` worker is refused the inherited session, and refused the captured one |
-| Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the session recorded the `DBAPIError` that poisoned it |
-| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session name that could, `run_sync`, `_proxied`, `object_session`, `_proxy_objects`, `get_bind` and `bind` included, on reads, assignments and deletions alike, and on what an allowed name carries: `no_autoflush` hands out a wrapper rather than the sync `Session` it yields; a commit through the `Connection` a result object carries is caught at the end as `UnexpectedRollback`, by identity and not merely by "some transaction is open", and one made on psycopg's own connection under it, or as a raw `COMMIT` or `ROLLBACK` string, is caught by asking the driver; reaching around it through `_session` or onto a second connection still works |
-| `REQUIRES_NEW`, `NESTED`, `SUPPORTS`, `MANDATORY` | supported | not implemented |
-| `readOnly`, `isolation`, `timeout` | supported | not implemented |
-
-Four of those deserve a sentence.
-
-**Self-invocation is where this beats Spring.** Spring's `@Transactional` is a proxy, so `this.withdraw()` inside
-`transfer()` never reaches it, which is the framework's most famous gotcha. Here the decorator wraps the function object,
-so a self-call participates like any other call. With `REQUIRED` the observable result is the same whenever the outer
-method is itself transactional, and strictly safer when it is not.
-
-**Participation makes get-or-create impossible, and that is Spring too.** Writing
-`try: await bank.get_account(id) except AccountNotFound: await bank.open_account(...)` inside a boundary raises
-`UnexpectedRollback`, even though `AccountNotFound` never reached the database and nothing was left in a state that
-could not be committed. The joined call raised, so the transaction is rollback-only, and Spring's `REQUIRED` does
-exactly this to a caught `RuntimeException`. It is the most surprising consequence of the rule and the first thing a
-reader will trip over, so it is worth saying out loud: an exception used as control flow across a `@transactional`
-call is still a failure of that transaction. The fix here is the one it is in Spring — do not cross the boundary for
-the lookup. `await self.accounts.find(id)` is a DAO call inside the transaction already open, it joins nothing, and a
-`None` back from it is not an exception at all.
-
-**Rollback rules are simpler on purpose.** Spring distinguishes checked from unchecked exceptions because Java has both.
-Python does not, so every exception rolls back, which is what `rollbackFor = Exception.class` gives you in Java anyway.
-
-**A poisoned transaction reports the poison, not the symptom.** If a joined call fails, the caller swallows it, and the
-caller then hits a second error, Spring propagates the second one and the first is gone. Here the first is the
-`__cause__` of the `UnexpectedRollback` and the second is its `__context__`, so the traceback shows both and the one
-that actually made the transaction unusable is the headline. This is a deliberate divergence, not an accident, and
-`test_unexpected_rollback_names_the_exception_that_poisoned_it` pins it.
-
-The propagation claims are not assertions in prose; they are what `tests/test_transaction_boundary.py` checks by
-capturing the session object at each layer and comparing identities.
 
 ## Race Conditions and Contention
 
@@ -705,33 +741,6 @@ inside `tx.py`.
 intended trade, but without a timeout a single stalled transaction blocks every transfer touching that account
 indefinitely. Five seconds to acquire a lock and fifteen for a statement turn that into an error the caller can see.
 
-## Printscreens
-
-### Bank
-
-![Bank tab](printscreens/ui-bank.png)
-
-Four service calls, top to bottom in the log. `open_account("dave", 0.00)` and `transfer(6 -> 7, 30.00)` committed, so
-carol is down to 70.00 and dave holds 30.00. Then `transfer(6 -> 7, 5000.00)` failed on insufficient funds: the log
-prints the balances before and after and they are identical, and no ledger row appeared even though one had already been
-inserted and flushed. `withdraw(7, 9999.00)` failed the same way. The account table is the state Postgres actually holds,
-re-read after every call.
-
-### How it works
-
-![How it works tab](printscreens/ui-how.png)
-
-The decorator and the `transfer()` method with line numbers, annotated line by line: where propagation is decided, where
-rollback-only is set, where the boundary opens, and where the commit is refused. Below them the contention card shows
-the `FOR UPDATE` lock and the ascending lock order with the numbers from the failing run, and the last card is the
-Spring comparison table above.
-
-### Swagger
-
-![Swagger UI](printscreens/swagger.png)
-
-Swagger UI at `/docs`, generated from the controller. Every route here is exactly one `@transactional` service call.
-
 ## How to Run
 
 ```bash
@@ -741,6 +750,12 @@ Swagger UI at `/docs`, generated from the controller. Every route here is exactl
 ./test.sh          # 145 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
+
+## Swagger
+
+![Swagger UI](printscreens/swagger.png)
+
+Swagger UI at `/docs`, generated from the controller. Every route here is exactly one `@transactional` service call.
 
 ## How to Run the Tests
 
