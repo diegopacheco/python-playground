@@ -1,3 +1,10 @@
+import os
+
+os.environ["DATABASE_URL"] = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+psycopg://bank_user:bank_pass@localhost:5434/bank_test_db",
+)
+
 import pytest
 from sqlalchemy import text
 

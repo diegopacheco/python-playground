@@ -14,4 +14,9 @@ until podman exec bank_postgres pg_isready -U bank_user -d bank_db > /dev/null 2
     sleep 1
 done
 
-echo "postgres ready on localhost:5434"
+if ! podman exec bank_postgres psql -U bank_user -d bank_db -tAc \
+    "select 1 from pg_database where datname = 'bank_test_db'" | grep -q 1; then
+    podman exec bank_postgres createdb -U bank_user bank_test_db
+fi
+
+echo "postgres ready on localhost:5434, databases bank_db and bank_test_db"

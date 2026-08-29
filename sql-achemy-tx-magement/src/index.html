@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bank Transaction Boundary</title>
+<style>
+:root{
+  --bg:#f6f6f3; --card:#ffffff; --line:#e4e4dd; --ink:#1c1c1a; --muted:#6b6b64;
+  --blue:#2563eb; --green:#15803d; --green-bg:#eefaf1; --red:#b91c1c; --red-bg:#fdf0ef;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+header{padding:28px 32px 0;max-width:1180px;margin:0 auto}
+h1{margin:0;font-size:26px;letter-spacing:-.4px}
+header p{margin:6px 0 18px;color:var(--muted);max-width:760px}
+nav{display:flex;gap:6px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;padding:10px 16px;font:inherit;color:var(--muted);
+  cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+nav button.on{color:var(--ink);border-bottom-color:var(--blue);font-weight:600}
+main{max-width:1180px;margin:0 auto;padding:22px 32px 60px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:18px}
+.card h2{margin:0 0 14px;font-size:15px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:8px;border-bottom:1px solid #f1f1ec;font-variant-numeric:tabular-nums}
+td.n{text-align:right;font-family:var(--mono)}
+tr.flash td{background:#fff8e1;transition:background .1s}
+.empty{color:var(--muted);font-style:italic;padding:10px 8px}
+form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input,select{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:#fff;min-width:0}
+input[type=text]{width:130px}
+input[type=number]{width:100px;font-family:var(--mono)}
+select{max-width:180px}
+button.go{background:var(--blue);color:#fff;border:0;border-radius:7px;padding:8px 14px;font:inherit;
+  font-weight:600;cursor:pointer}
+button.go:hover{background:#1d4fd8}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.hint{color:var(--muted);font-size:13px;margin:10px 0 0}
+.log{list-style:none;margin:0;padding:0;max-height:290px;overflow:auto}
+.log li{border-left:3px solid var(--line);padding:9px 12px;margin-bottom:8px;background:#fafaf7;border-radius:0 7px 7px 0}
+.log li.ok{border-left-color:var(--green);background:var(--green-bg)}
+.log li.bad{border-left-color:var(--red);background:var(--red-bg)}
+.log .head{display:flex;gap:8px;align-items:center;font-weight:600;font-size:14px}
+.tag{font-family:var(--mono);font-size:11px;padding:2px 6px;border-radius:4px;background:#e8e8e1;color:#4a4a44}
+.log li.ok .tag{background:#cdecd6;color:#14532d}
+.log li.bad .tag{background:#f6d5d2;color:#7f1d1d}
+.log .detail{font-family:var(--mono);font-size:12.5px;color:#4a4a44;margin-top:4px;word-break:break-word}
+pre{margin:0;background:#fbfbf8;border:1px solid var(--line);border-radius:9px;overflow:auto}
+ol.code{margin:0;padding:14px 0;font-family:var(--mono);font-size:13px;line-height:1.65;counter-reset:l}
+ol.code li{list-style:none;counter-increment:l;padding:0 16px 0 58px;position:relative;white-space:pre}
+ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-align:right;color:#b4b4aa}
+.k{color:#7c3aed}.s{color:#15803d}.c{color:#94948c;font-style:italic}.d{color:#b45309}.f{color:#2563eb}
+.note{margin:16px 0 0;color:#3a3a36}
+.note b{color:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bank Transaction Boundary</h1>
+  <p>Every button here calls one <code>@transactional</code> service method. Watch the ledger and the balances:
+     a failed transfer leaves both exactly as they were, even though the ledger row was already inserted.</p>
+  <nav>
+    <button class="on" data-tab="bank">Bank</button>
+    <button data-tab="how">How it works</button>
+  </nav>
+</header>
+
+<main>
+<section id="bank">
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Accounts</h2>
+        <table><thead><tr><th>id</th><th>owner</th><th style="text-align:right">balance</th></tr></thead>
+        <tbody id="accounts"></tbody></table>
+        <div id="accounts-empty" class="empty">no accounts yet</div>
+      </div>
+      <div class="card">
+        <h2>Open account</h2>
+        <form id="open">
+          <input type="text" id="owner" placeholder="owner" required>
+          <input type="number" id="initial" value="100.00" step="0.01" min="0">
+          <button class="go">Open</button>
+        </form>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Transfer</h2>
+        <form id="transfer">
+          <select id="source"></select>
+          <span class="tag">to</span>
+          <select id="target"></select>
+          <input type="number" id="amount" value="30.00" step="0.01" min="0.01">
+          <button class="go">Transfer</button>
+        </form>
+        <p class="hint">One service call reaching LedgerService, then withdraw, then deposit. All of it commits, or none of it does.</p>
+      </div>
+      <div class="card">
+        <h2>Deposit / Withdraw</h2>
+        <form id="single">
+          <select id="single-account"></select>
+          <input type="number" id="single-amount" value="20.00" step="0.01" min="0.01">
+          <button class="go" value="deposit">Deposit</button>
+          <button class="go" value="withdraw" style="background:#57574f">Withdraw</button>
+        </form>
+        <p class="hint">Withdrawing more than the balance raises, so the transaction rolls back.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>What the transaction did</h2>
+    <ul class="log" id="log"></ul>
+    <div id="log-empty" class="empty">nothing yet</div>
+  </div>
+
+  <div class="card">
+    <h2>Ledger (committed transfers only)</h2>
+    <table><thead><tr><th>id</th><th>source</th><th>target</th><th style="text-align:right">amount</th><th>created at</th></tr></thead>
+    <tbody id="ledger"></tbody></table>
+    <div id="ledger-empty" class="empty">no committed transfers</div>
+  </div>
+</section>
+
+<section id="how" hidden>
+  <div class="card">
+    <h2>src/tx.py &mdash; the whole mechanism</h2>
+    <pre><ol class="code" id="code"></ol></pre>
+    <p class="note"><b>Line 5</b> is the propagation rule. A context already set means a transaction is open, so the
+       call joins it and the decorator gets out of the way. This is Spring's <code>REQUIRED</code>.</p>
+    <p class="note"><b>Lines 8&ndash;10</b> are participation semantics. A joined call that fails marks the whole
+       transaction rollback-only, so a caller cannot swallow the failure and commit half the work.</p>
+    <p class="note"><b>Line 15</b> is the boundary. <code>session.begin()</code> commits when the method returns and
+       rolls back when it raises, so there is no <code>except</code> around business logic and no error is swallowed.</p>
+    <p class="note"><b>Lines 17&ndash;20</b> refuse the commit when a joined call already failed, the same way Spring
+       throws <code>UnexpectedRollbackException</code>.</p>
+    <p class="note"><b>Line 23</b> restores the previous context in a <code>finally</code>, so a rolled-back call leaves
+       nothing behind for the next call on the same task.</p>
+  </div>
+  <div class="card">
+    <h2>src/service.py &mdash; one boundary, four participants</h2>
+    <pre><ol class="code" id="code2"></ol></pre>
+    <p class="note"><b>Line 4</b> calls <code>LedgerService</code>, a different service with its own
+       <code>@transactional</code> methods. <b>Lines 5&ndash;6</b> call back into this same service. All four run inside
+       the one transaction that line 1 opened, and the DAOs underneath find it through <code>current_session()</code>.</p>
+  </div>
+  <div class="card">
+    <h2>Contention &mdash; the boundary is not enough on its own</h2>
+    <pre><ol class="code" id="code3"></ol></pre>
+    <p class="note">A correct transaction still loses updates if the balance is read, changed in Python and written
+       back: two concurrent deposits both read the same number and one overwrites the other. Ten concurrent deposits of
+       10.00 into an empty account produced <b>20.00</b> instead of 100.00 before this lock existed.</p>
+    <p class="note"><code>SELECT ... FOR UPDATE</code> makes the read block until any other transaction holding that row
+       commits, so the read-modify-write becomes serial per account. <code>sorted()</code> is the other half: both rows
+       are locked in ascending id order, so <code>alice &rarr; bob</code> and <code>bob &rarr; alice</code> running at
+       the same time cannot each hold the row the other one wants.</p>
+    <p class="note">Both claims are automated in <code>tests/test_contention.py</code>, which fails on three tests when
+       the lock is removed.</p>
+  </div>
+  <div class="card">
+    <h2>Compared to Spring @Transactional</h2>
+    <table>
+      <thead><tr><th style="width:34%">Behaviour</th><th style="width:33%">Spring</th><th>Here</th></tr></thead>
+      <tbody>
+        <tr><td>Default propagation</td><td>REQUIRED</td><td>REQUIRED, the only mode implemented</td></tr>
+        <tr><td>Commit</td><td>method returns</td><td>method returns</td></tr>
+        <tr><td>Rollback</td><td>unchecked exceptions only</td><td>any exception, Python has no checked ones</td></tr>
+        <tr><td>Joined call fails, caller swallows it</td><td>rollback-only, UnexpectedRollbackException</td>
+            <td>rollback-only, UnexpectedRollback</td></tr>
+        <tr><td>Self-invocation</td><td>bypasses the proxy, no transaction</td>
+            <td>still participates, the decorator wraps the function itself</td></tr>
+        <tr><td>Transaction is bound to</td><td>the thread</td><td>the asyncio task</td></tr>
+        <tr><td>REQUIRES_NEW, NESTED, SUPPORTS</td><td>supported</td><td>not implemented</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+</main>
+
+<script>
+const TX_CODE = `def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> T:
+        joined = _current.get()
+        if joined is not None:
+            try:
+                return await func(*args, **kwargs)
+            except Exception:
+                joined.rollback_only = True
+                raise
+        async with session_factory() as session:
+            context = TransactionContext(session)
+            token = _current.set(context)
+            try:
+                async with session.begin():
+                    result = await func(*args, **kwargs)
+                    if context.rollback_only:
+                        raise UnexpectedRollback(
+                            "a joined call failed and marked the transaction rollback-only"
+                        )
+                    return result
+            finally:
+                _current.reset(token)
+
+    return wrapper`;
+
+const SERVICE_CODE = `@transactional
+async def transfer(self, source_id: int, target_id: int, amount: Decimal) -> LedgerEntry:
+    self._check_amount(amount)
+    entry = await self.ledger.record(source_id, target_id, amount)
+    await self.withdraw(source_id, amount)
+    await self.deposit(target_id, amount)
+    return entry`;
+
+const LOCK_CODE = `# dao.py
+async def find_for_update(self, account_id: int) -> Account | None:
+    result = await current_session().execute(
+        select(Account)
+        .where(Account.id == account_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+# service.py, inside transfer()
+for account_id in sorted({source_id, target_id}):
+    await self.lock_account(account_id)`;
+
+const KEYWORDS = /\b(async|await|def|return|if|is|not|None|try|finally|with|as|self|int)\b/;
+const RULE = /(#[^\n]*)|('[^'\n]*'|"[^"\n]*")|(@[A-Za-z_]\w*)|\b(async|await|def|return|if|is|not|None|try|finally|with|as|self)\b|([A-Za-z_]\w*)(?=\()/g;
+
+function esc(text){
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function paint(line){
+  return esc(line).replace(RULE, (m, comment, str, deco, kw, fn) => {
+    if (comment) return '<span class="c">'+m+'</span>';
+    if (str) return '<span class="s">'+m+'</span>';
+    if (deco) return '<span class="d">'+m+'</span>';
+    if (kw) return '<span class="k">'+m+'</span>';
+    return '<span class="f">'+m+'</span>';
+  });
+}
+function renderCode(id, source){
+  document.getElementById(id).innerHTML =
+    source.split('\n').map(line => '<li>'+(paint(line) || ' ')+'</li>').join('');
+}
+
+document.querySelectorAll('nav button').forEach(button => {
+  button.onclick = () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b === button));
+    document.getElementById('bank').hidden = button.dataset.tab !== 'bank';
+    document.getElementById('how').hidden = button.dataset.tab !== 'how';
+  };
+});
+
+let accounts = [];
+
+async function call(method, path, body){
+  const response = await fetch(path, {
+    method,
+    headers: {'Content-Type': 'application/json'},
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  return {status: response.status, ok: response.ok, payload: await response.json()};
+}
+
+function money(value){ return Number(value).toFixed(2); }
+
+function snapshot(){
+  return accounts.map(a => a.id + '=' + money(a.balance)).join('  ');
+}
+
+function log(ok, title, detail){
+  const item = document.createElement('li');
+  item.className = ok ? 'ok' : 'bad';
+  item.innerHTML = '<div class="head"><span class="tag">' + (ok ? 'COMMIT' : 'ROLLBACK') + '</span>' +
+    esc(title) + '</div><div class="detail">' + esc(detail) + '</div>';
+  const list = document.getElementById('log');
+  list.prepend(item);
+  document.getElementById('log-empty').hidden = true;
+}
+
+function fillSelect(select, keep){
+  select.innerHTML = accounts.map(a =>
+    '<option value="' + a.id + '">' + esc(a.owner) + ' (' + money(a.balance) + ')</option>').join('');
+  if (keep && accounts.some(a => String(a.id) === keep)) select.value = keep;
+}
+
+async function refresh(changed){
+  accounts = (await call('GET', '/api/accounts')).payload;
+  const body = document.getElementById('accounts');
+  body.innerHTML = accounts.map(a =>
+    '<tr' + (changed && changed.includes(a.id) ? ' class="flash"' : '') + '><td>' + a.id + '</td><td>' +
+    esc(a.owner) + '</td><td class="n">' + money(a.balance) + '</td></tr>').join('');
+  document.getElementById('accounts-empty').hidden = accounts.length > 0;
+
+  ['source', 'target', 'single-account'].forEach(id => {
+    const select = document.getElementById(id);
+    fillSelect(select, select.value);
+  });
+  if (accounts.length > 1 && document.getElementById('target').value === document.getElementById('source').value) {
+    document.getElementById('target').value = accounts[1].id;
+  }
+
+  const entries = (await call('GET', '/api/ledger')).payload;
+  document.getElementById('ledger').innerHTML = entries.map(e =>
+    '<tr><td>' + e.id + '</td><td>' + e.source_id + '</td><td>' + e.target_id + '</td><td class="n">' +
+    money(e.amount) + '</td><td>' + e.created_at.slice(0, 19).replace('T', ' ') + '</td></tr>').join('');
+  document.getElementById('ledger-empty').hidden = entries.length > 0;
+}
+
+document.getElementById('open').onsubmit = async event => {
+  event.preventDefault();
+  const owner = document.getElementById('owner').value.trim();
+  const initial = document.getElementById('initial').value;
+  const result = await call('POST', '/api/accounts', {owner, initial_balance: initial});
+  await refresh(result.ok ? [result.payload.id] : []);
+  log(result.ok, 'open_account("' + owner + '", ' + money(initial) + ')',
+      result.ok ? 'account ' + result.payload.id + ' committed' : result.payload.error || 'http ' + result.status);
+  if (result.ok) document.getElementById('owner').value = '';
+};
+
+document.getElementById('transfer').onsubmit = async event => {
+  event.preventDefault();
+  const source = Number(document.getElementById('source').value);
+  const target = Number(document.getElementById('target').value);
+  const amount = document.getElementById('amount').value;
+  const before = snapshot();
+  const result = await call('POST', '/api/transfers', {source_id: source, target_id: target, amount});
+  await refresh([source, target]);
+  const after = snapshot();
+  log(result.ok, 'transfer(' + source + ' -> ' + target + ', ' + money(amount) + ')',
+      result.ok
+        ? 'ledger entry ' + result.payload.id + ' committed, balances now ' + after
+        : 'http ' + result.status + ' ' + (result.payload.error || '') +
+          ' | balances before ' + before + ' | after ' + after);
+};
+
+document.getElementById('single').onsubmit = async event => {
+  event.preventDefault();
+  const operation = event.submitter.value;
+  const id = Number(document.getElementById('single-account').value);
+  const amount = document.getElementById('single-amount').value;
+  const before = snapshot();
+  const result = await call('POST', '/api/accounts/' + id + '/' + operation, {amount});
+  await refresh([id]);
+  log(result.ok, operation + '(' + id + ', ' + money(amount) + ')',
+      result.ok
+        ? 'balance now ' + money(result.payload.balance)
+        : 'http ' + result.status + ' ' + (result.payload.error || '') + ' | balances unchanged ' + before);
+};
+
+renderCode('code', TX_CODE);
+renderCode('code2', SERVICE_CODE);
+renderCode('code3', LOCK_CODE);
+refresh([]);
+</script>
+</body>
+</html>

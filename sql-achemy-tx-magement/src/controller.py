@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from db import create_schema
@@ -33,6 +34,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Bank Transaction Boundary", lifespan=lifespan)
 service = BankService()
+INDEX = Path(__file__).parent / "index.html"
+
+
+@app.get("/", include_in_schema=False)
+async def index() -> FileResponse:
+    return FileResponse(INDEX)
 
 
 def as_account(account: Account) -> dict:

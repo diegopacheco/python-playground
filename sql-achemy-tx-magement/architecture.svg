@@ -31,19 +31,19 @@
   </g>
 
   <g text-anchor="middle" fill="#2f2f2f">
-    <text x="195" y="86" font-size="22" font-weight="700">curl &#183; httpx</text>
-    <text x="195" y="110" font-size="16" fill="#5a5a5a">REST over HTTP</text>
+    <text x="195" y="86" font-size="22" font-weight="700">browser UI</text>
+    <text x="195" y="110" font-size="16" fill="#5a5a5a">index.html &#183; fetch &#183; curl</text>
 
     <text x="195" y="200" font-size="22" font-weight="700">controller.py</text>
     <text x="195" y="226" font-size="16" fill="#5a5a5a">thin FastAPI routes</text>
 
     <text x="195" y="320" font-size="22" font-weight="700">service.py</text>
-    <text x="195" y="346" font-size="16" fill="#5a5a5a">every method @transactional</text>
-    <text x="195" y="370" font-size="16" fill="#5a5a5a">transfer calls withdraw + deposit</text>
+    <text x="195" y="346" font-size="16" fill="#5a5a5a">BankService &#183; LedgerService</text>
+    <text x="195" y="370" font-size="16" fill="#5a5a5a">every method @transactional</text>
 
     <text x="195" y="460" font-size="22" font-weight="700">dao.py</text>
     <text x="195" y="486" font-size="16" fill="#5a5a5a">AccountDAO &#183; LedgerDAO</text>
-    <text x="195" y="510" font-size="16" fill="#5a5a5a">current_session().flush()</text>
+    <text x="195" y="510" font-size="16" fill="#5a5a5a">SELECT FOR UPDATE &#183; flush()</text>
 
     <text x="400" y="308" font-size="15" fill="#5a5a5a">@transactional</text>
     <text x="400" y="458" font-size="15" fill="#5a5a5a">current_session()</text>
@@ -53,8 +53,8 @@
     <text x="705" y="328" font-size="18" fill="#4a4a4a">ContextVar holds one AsyncSession per task</text>
     <text x="705" y="362" font-size="18" fill="#4a4a4a">already set? join the caller transaction</text>
     <text x="705" y="396" font-size="18" fill="#4a4a4a">not set? session_factory() + session.begin()</text>
-    <text x="705" y="430" font-size="18" fill="#4a4a4a">method returns &#8594; COMMIT</text>
-    <text x="705" y="464" font-size="18" fill="#4a4a4a">method raises &#8594; ROLLBACK</text>
+    <text x="705" y="430" font-size="18" fill="#4a4a4a">joined call fails? mark rollback-only</text>
+    <text x="705" y="464" font-size="18" fill="#4a4a4a">returns &#8594; COMMIT, raises &#8594; ROLLBACK</text>
 
     <text x="500" y="606" font-size="23" font-weight="700">PostgreSQL 18 in podman</text>
     <text x="500" y="632" font-size="17" fill="#5a5a5a">accounts &#183; ledger &#8212; one transaction per service call, nested calls included</text>

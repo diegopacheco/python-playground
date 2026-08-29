@@ -17,6 +17,15 @@ class AccountDAO:
     async def find(self, account_id: int) -> Account | None:
         return await current_session().get(Account, account_id)
 
+    async def find_for_update(self, account_id: int) -> Account | None:
+        result = await current_session().execute(
+            select(Account)
+            .where(Account.id == account_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
     async def find_all(self) -> list[Account]:
         result = await current_session().execute(select(Account).order_by(Account.id))
         return list(result.scalars())

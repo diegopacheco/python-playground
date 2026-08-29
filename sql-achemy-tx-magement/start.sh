@@ -13,7 +13,7 @@ fi
 echo $! > .api.pid
 
 attempts=0
-until curl -sf http://localhost:8000/api/accounts > /dev/null 2>&1; do
+until curl -sf http://localhost:8000/ > /dev/null 2>&1; do
     attempts=$((attempts + 1))
     if [ "$attempts" -ge 30 ]; then
         echo "api did not start in 30s"
