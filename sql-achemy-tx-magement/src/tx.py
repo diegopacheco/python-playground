@@ -20,11 +20,15 @@ OWNED_BY_THE_BOUNDARY = frozenset(
         "rollback",
         "close",
         "aclose",
+        "close_all",
+        "reset",
+        "invalidate",
         "begin",
         "begin_nested",
         "connection",
         "get_transaction",
         "sync_session",
+        "run_sync",
     }
 )
 
@@ -73,7 +77,7 @@ class BoundarySession:
         async def guarded(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await attribute(*args, **kwargs)
-            except DBAPIError as error:
+            except (DBAPIError, asyncio.CancelledError) as error:
                 if self._context.failure is None:
                     self._context.failure = error
                 raise
@@ -117,6 +121,9 @@ def current_session() -> BoundarySession:
 
 
 def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+    if not inspect.iscoroutinefunction(func):
+        raise TypeError(f"@transactional needs an async def, {func.__name__} is not one")
+
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> T:
         joined = _active()

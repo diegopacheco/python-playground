@@ -289,14 +289,31 @@ async def test_a_transfer_to_the_same_account_is_rejected(bank: BankService):
     assert (await bank.get_account(account.id)).balance == Decimal("100.00")
 
 
-async def test_the_ledger_cannot_reference_an_account_that_does_not_exist(
-    bank: BankService,
-):
+async def test_the_ledger_refuses_an_account_that_does_not_exist(bank: BankService):
+    """record() is a boundary of its own, so the lock it takes has to prove both
+    accounts exist the way transfer() does. Leaving that to the foreign key turned a
+    missing account into an IntegrityError, which the controller reports as a 409
+    conflict for a row that was never there."""
     source = await bank.open_account("alice", Decimal("100.00"))
     ledger = LedgerService()
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(AccountNotFound):
         await ledger.record(source.id, 9999, Decimal("5.00"))
+
+    assert await bank.list_ledger() == []
+
+
+async def test_the_schema_refuses_an_orphan_ledger_row(bank: BankService):
+    """The service check is the first net, not the only one. The foreign key is what
+    stops a bug that reaches the DAO directly from leaving an orphan behind."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+
+    @transactional
+    async def write_an_orphan() -> None:
+        await LedgerDAO().insert(source.id, 9999, Decimal("5.00"))
+
+    with pytest.raises(IntegrityError):
+        await write_an_orphan()
 
     assert await bank.list_ledger() == []
 
@@ -508,3 +525,76 @@ async def test_both_accounts_are_locked_in_ascending_id_order(bank: BankService)
         return [a.id for a in await AccountDAO().find_all_for_update([high.id, low.id])]
 
     assert await locked() == [low.id, high.id]
+
+
+async def test_business_code_cannot_reach_the_sync_session_and_commit(
+    bank: BankService,
+):
+    """run_sync() hands out the very Session that sync_session is refused for, so
+    leaving it open blocked nothing. A commit through it committed the debit leg of a
+    transfer, the boundary rolled back the credit leg it could still see, and thirty
+    units of money stopped existing."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+
+    @transactional
+    async def half_a_transfer() -> None:
+        await bank.withdraw(source.id, Decimal("30.00"))
+        await current_session().run_sync(lambda session: session.commit())
+        await bank.deposit(target.id, Decimal("30.00"))
+
+    with pytest.raises(TransactionNotYours):
+        await half_a_transfer()
+
+    assert (await bank.get_account(source.id)).balance == Decimal("100.00")
+    assert (await bank.get_account(target.id)).balance == Decimal("0.00")
+
+
+async def test_every_way_of_ending_the_transaction_is_refused(bank: BankService):
+    """close() and aclose() were refused while reset(), invalidate() and close_all()
+    ended the same transaction the same way. The liveness check caught them, but a
+    refusal that names the call is the answer the caller can act on."""
+    for name in ("reset", "invalidate", "close_all", "run_sync", "sync_session"):
+
+        @transactional
+        async def caller(name=name) -> None:
+            getattr(current_session(), name)
+
+        with pytest.raises(TransactionNotYours):
+            await caller()
+
+
+async def test_a_swallowed_cancellation_at_the_session_cannot_be_committed_over(
+    bank: BankService,
+):
+    """A cancelled statement leaves the connection unusable without ever raising a
+    DBAPIError, and it never crosses a @transactional frame when the DAO call is
+    awaited directly. Unrecorded, the boundary reached COMMIT and failed there with a
+    SQLAlchemy state error instead of naming what went wrong."""
+    await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        try:
+            async with asyncio.timeout(0.05):
+                await current_session().execute(text("select pg_sleep(3)"))
+        except TimeoutError:
+            pass
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback) as failure:
+        await caller()
+
+    assert isinstance(failure.value.__cause__, asyncio.CancelledError)
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_transactional_refuses_a_function_that_is_not_async():
+    """The wrapper awaits what it wraps, so a sync function failed at call time with
+    a TypeError about the return value rather than at the decorator that is wrong."""
+    with pytest.raises(TypeError):
+
+        @transactional
+        def not_async() -> int:
+            return 1

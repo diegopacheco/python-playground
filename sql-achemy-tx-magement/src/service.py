@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -69,6 +70,17 @@ def _check_balance(value: Decimal) -> None:
         raise InvalidAmount(f"a balance of {value} is too large to store")
 
 
+async def _lock_accounts(
+    accounts: AccountDAO, account_ids: Iterable[int]
+) -> list[Account]:
+    locked = await accounts.find_all_for_update(account_ids)
+    found = {account.id for account in locked}
+    for account_id in account_ids:
+        if account_id not in found:
+            raise AccountNotFound(f"account {account_id} does not exist")
+    return locked
+
+
 def _account_view(account: Account) -> AccountView:
     return AccountView(account.id, account.owner, account.balance.quantize(CENTS))
 
@@ -93,7 +105,7 @@ class LedgerService:
         self, source_id: int, target_id: int, amount: Decimal
     ) -> LedgerView:
         _check_transfer(source_id, target_id, amount)
-        await self.accounts.find_all_for_update({source_id, target_id})
+        await _lock_accounts(self.accounts, (source_id, target_id))
         return _ledger_view(await self.entries.insert(source_id, target_id, amount))
 
     @transactional
@@ -166,9 +178,4 @@ class BankService:
         return account
 
     async def lock_accounts(self, *account_ids: int) -> list[Account]:
-        accounts = await self.accounts.find_all_for_update(account_ids)
-        locked = {account.id for account in accounts}
-        for account_id in account_ids:
-            if account_id not in locked:
-                raise AccountNotFound(f"account {account_id} does not exist")
-        return accounts
+        return await _lock_accounts(self.accounts, account_ids)
