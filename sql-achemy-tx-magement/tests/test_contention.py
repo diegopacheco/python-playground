@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import text
 
 from dao import AccountDAO, LedgerDAO
-from service import BankService, InsufficientFunds
+from service import BankService, InsufficientFunds, LedgerService
 from tx import current_session, transactional
 
 
@@ -133,3 +133,29 @@ async def test_a_rolled_back_insert_really_reached_the_database(bank: BankServic
 
     assert await ledger_sequence() == committed + 1
     assert len(await bank.list_ledger()) == 1
+
+
+async def test_recording_a_ledger_entry_does_not_deadlock_with_a_transfer(
+    bank: BankService,
+):
+    """Inserting a ledger row takes a foreign key lock on each account it names, in the
+    order the columns are declared, not in ascending id order. Against a transfer that
+    locks ascending that is the classic ABBA deadlock, so record() has to take the same
+    ascending lock a transfer takes before it inserts."""
+    alice = await bank.open_account("alice", Decimal("1000.00"))
+    bob = await bank.open_account("bob", Decimal("1000.00"))
+    high, low = max(alice.id, bob.id), min(alice.id, bob.id)
+    ledger = LedgerService()
+
+    results = await asyncio.gather(
+        *(
+            ledger.record(high, low, Decimal("1.00"))
+            if index % 2
+            else bank.transfer(low, high, Decimal("1.00"))
+            for index in range(20)
+        ),
+        return_exceptions=True,
+    )
+
+    assert [r for r in results if isinstance(r, BaseException)] == []
+    assert await total_balance(bank) == Decimal("2000.00")

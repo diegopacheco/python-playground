@@ -132,23 +132,33 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
   <div class="card">
     <h2>src/tx.py &mdash; the whole mechanism</h2>
     <pre><ol class="code" id="code"></ol></pre>
-    <p class="note"><b>Lines 3&ndash;6</b> keep the session on the task that opened it. A <code>ContextVar</code> is
+    <p class="note"><b>Lines 5&ndash;10</b> are what a DAO actually holds. <code>current_session()</code> hands back
+       this wrapper, not the <code>AsyncSession</code>, so everything a DAO needs passes through but
+       <code>commit</code>, <code>rollback</code>, <code>close</code> and <code>begin</code> raise. One
+       <code>await current_session().commit()</code> inside the boundary would otherwise split it, and the half that
+       ran before the call would survive the rollback of the half that ran after it.</p>
+    <p class="note"><b>Lines 15&ndash;18</b> keep the session on the task that opened it. A <code>ContextVar</code> is
        copied into every task spawned inside the boundary, so an <code>asyncio.gather()</code> of service calls would
        otherwise drive one <code>AsyncSession</code> from several tasks at once. The lookup refuses instead.</p>
-    <p class="note"><b>Line 14</b> is the propagation rule. A context already set means a transaction is open, so the
+    <p class="note"><b>Line 26</b> is the propagation rule. A context already set means a transaction is open, so the
        call joins it and the decorator gets out of the way. This is Spring's <code>REQUIRED</code>.</p>
-    <p class="note"><b>Lines 17&ndash;20</b> are participation semantics. A joined call that fails marks the whole
+    <p class="note"><b>Lines 29&ndash;32</b> are participation semantics. A joined call that fails marks the whole
        transaction rollback-only, so a caller cannot swallow the failure and commit half the work. The catch is
        <code>BaseException</code> because <code>asyncio.CancelledError</code> is not an <code>Exception</code>: a joined
        call killed by <code>asyncio.timeout()</code> has to poison the transaction too, or a swallowed
        <code>TimeoutError</code> commits half a transfer.</p>
-    <p class="note"><b>Line 25</b> is the boundary. <code>session.begin()</code> commits when the method returns and
+    <p class="note"><b>Line 39</b> is the boundary. <code>session.begin()</code> commits when the method returns and
        rolls back when it raises, so business logic is never wrapped in a swallowing <code>except</code>.</p>
-    <p class="note"><b>Lines 28&ndash;33</b> refuse the commit when a joined call already failed, the same way Spring
-       throws <code>UnexpectedRollbackException</code>. Line 29 compares identities so that a failure simply propagating
-       out of the boundary reaches the caller unchanged instead of being masked, and the remembered exception becomes
-       the <code>__cause__</code> of the rollback.</p>
-    <p class="note"><b>Line 36</b> restores the previous context in a <code>finally</code>, so a rolled-back call leaves
+    <p class="note"><b>Lines 42&ndash;47</b> refuse the commit when a joined call already failed, the same way Spring
+       throws <code>UnexpectedRollbackException</code>. Line 43 compares identities so that a failure simply propagating
+       out of the boundary reaches the caller unchanged instead of being masked, and the exception that poisoned the
+       transaction, not whatever the caller tripped over afterwards, becomes the <code>__cause__</code> of the
+       rollback.</p>
+    <p class="note"><b>Lines 48&ndash;50</b> are the last thing between a return and a commit. Rollback-only only fires
+       when the failure crossed a <code>@transactional</code> frame; a database error caught straight off a DAO does
+       not, and Postgres has already killed that transaction. Committing a dead transaction is a silent no-op, so
+       without this check the boundary would return success for work the database threw away.</p>
+    <p class="note"><b>Line 53</b> restores the previous context in a <code>finally</code>, so a rolled-back call leaves
        nothing behind for the next call on the same task.</p>
   </div>
   <div class="card">
@@ -171,7 +181,9 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        commits, so the read-modify-write becomes serial per account. <code>ORDER BY id</code> is the other half:
        Postgres puts its <code>LockRows</code> node above the <code>Sort</code>, so both rows are locked in ascending id
        order and <code>alice &rarr; bob</code> and <code>bob &rarr; alice</code> running at the same time cannot each
-       hold the row the other one wants.</p>
+       hold the row the other one wants. Inserting a ledger row takes a foreign key lock on each account it names, in
+       column order rather than ascending, so <code>record()</code> takes the same ascending lock first and no two
+       writers ever queue in opposite orders.</p>
     <p class="note">Nothing retries, on purpose. An aborted transaction cannot be resumed, only re-run from the top, so
        a retry loop inside <code>@transactional</code> would silently re-execute the whole business method including
        whatever it did that Postgres cannot roll back. Retry belongs around the service call, where the caller knows
@@ -183,8 +195,13 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        keys from <code>ledger</code> to <code>accounts</code> mean a bug in the service cannot leave a negative balance
        or an orphan row behind, and <code>lock_timeout</code> means a stalled transaction cannot hold a hot account
        forever.</p>
+    <p class="note">Money itself is checked before any of this. <code>Numeric(18, 2)</code> rounds on write, and a
+       transfer rounds its debit and its credit separately, so moving <code>0.125</code> takes <code>0.12</code> from
+       one account and gives <code>0.13</code> to the other. Twenty of those mint a cent each and
+       <code>CHECK (balance &gt;= 0)</code> never notices, because what breaks is conservation, not sign. An amount
+       finer than a cent is refused.</p>
     <p class="note">Both claims are automated in <code>tests/test_contention.py</code>, which fails on three tests when
-       the lock is removed.</p>
+       the lock is removed and on a fourth when <code>record()</code> stops taking the lock.</p>
   </div>
   <div class="card">
     <h2>Compared to Spring @Transactional</h2>
@@ -200,6 +217,10 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
             <td>rollback-only, CancelledError is caught even though it is not an Exception</td></tr>
         <tr><td>Transaction reused from another thread or task</td><td>a new thread simply has none</td>
             <td>CrossTaskTransaction, a spawned task is refused the inherited session</td></tr>
+        <tr><td>Database error swallowed without crossing a proxy</td><td>commit fails, the caller is told</td>
+            <td>UnexpectedRollback, the boundary checks the transaction is still alive before returning</td></tr>
+        <tr><td>Business code commits the connection itself</td><td>possible, the boundary cannot stop it</td>
+            <td>TransactionNotYours, the session handed to a DAO cannot commit</td></tr>
         <tr><td>Self-invocation</td><td>bypasses the proxy, no transaction</td>
             <td>still participates, the decorator wraps the function itself</td></tr>
         <tr><td>Transaction is bound to</td><td>the thread</td><td>the asyncio task</td></tr>
@@ -211,7 +232,19 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
 </main>
 
 <script>
-const TX_CODE = `def _active() -> TransactionContext | None:
+const TX_CODE = `class BoundarySession:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    def __getattr__(self, name: str) -> Any:
+        if name in OWNED_BY_THE_BOUNDARY:
+            raise TransactionNotYours(
+                f"{name}() belongs to @transactional, not to the code inside it"
+            )
+        return getattr(self._session, name)
+
+
+def _active() -> TransactionContext | None:
     context = _current.get()
     if context is not None and context.task is not asyncio.current_task():
         raise CrossTaskTransaction(
@@ -232,7 +265,9 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     joined.failure = error
                 raise
         async with session_factory() as session:
-            context = TransactionContext(session, asyncio.current_task())
+            context = TransactionContext(
+                BoundarySession(session), asyncio.current_task()
+            )
             token = _current.set(context)
             try:
                 async with session.begin():
@@ -240,10 +275,13 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         result = await func(*args, **kwargs)
                     except BaseException as error:
                         if context.failure is not None and error is not context.failure:
-                            raise UnexpectedRollback(ROLLBACK_ONLY) from error
+                            raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
                         raise
                     if context.failure is not None:
                         raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
+                    transaction = session.get_transaction()
+                    if transaction is None or not transaction.is_active:
+                        raise UnexpectedRollback(LOST_TRANSACTION)
                     return result
             finally:
                 _current.reset(token)

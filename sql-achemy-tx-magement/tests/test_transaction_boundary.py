@@ -16,6 +16,7 @@ from service import (
 from tx import (
     CrossTaskTransaction,
     NoActiveTransaction,
+    TransactionNotYours,
     UnexpectedRollback,
     current_session,
     transactional,
@@ -313,3 +314,77 @@ async def test_the_schema_refuses_a_negative_balance(bank: BankService):
         await force_overdraft()
 
     assert (await bank.get_account(account.id)).balance == Decimal("10.00")
+
+
+async def test_a_swallowed_dao_error_cannot_be_reported_as_success(bank: BankService):
+    """A database error caught straight off a DAO never passes through a @transactional
+    frame, so nothing marks the transaction rollback-only. Postgres has already
+    deactivated it, and committing a dead transaction is a silent no-op: without the
+    liveness check the boundary returns success for work the database threw away."""
+    await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        try:
+            await AccountDAO().insert("alice", Decimal("1.00"))
+        except IntegrityError:
+            pass
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await caller()
+
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_business_code_cannot_commit_the_boundarys_transaction(bank: BankService):
+    """current_session() is handed to every DAO. If it were the raw AsyncSession then
+    any of them could commit, and the half of a transfer that ran before the commit
+    would survive the rollback of the half that ran after it."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+
+    @transactional
+    async def half_a_transfer() -> None:
+        await bank.withdraw(source.id, Decimal("30.00"))
+        await current_session().commit()
+        await bank.deposit(target.id, Decimal("30.00"))
+
+    with pytest.raises(TransactionNotYours):
+        await half_a_transfer()
+
+    assert (await bank.get_account(source.id)).balance == Decimal("100.00")
+    assert (await bank.get_account(target.id)).balance == Decimal("0.00")
+
+
+async def test_unexpected_rollback_names_the_exception_that_poisoned_it(
+    bank: BankService,
+):
+    """The failure worth reporting is the one that made the transaction unusable, not
+    whatever the caller happened to trip over afterwards. The later error stays
+    reachable as __context__ so the traceback still shows both."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def caller() -> None:
+        try:
+            await bank.withdraw(account.id, Decimal("999.00"))
+        except InsufficientFunds:
+            pass
+        await bank.get_account(4242)
+
+    with pytest.raises(UnexpectedRollback) as failure:
+        await caller()
+
+    assert isinstance(failure.value.__cause__, InsufficientFunds)
+    assert isinstance(failure.value.__context__, AccountNotFound)
+
+
+async def test_a_lock_helper_cannot_hand_an_entity_across_a_boundary(bank: BankService):
+    """lock_account returns an ORM entity, so it must never be a boundary of its own:
+    it would close its session on the way out and hand the caller a detached row."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    with pytest.raises(NoActiveTransaction):
+        await bank.lock_account(account.id)

@@ -30,6 +30,17 @@ it from two tasks at once, which SQLAlchemy does not allow. Each context therefo
 lookup from any other task raises `CrossTaskTransaction` instead of corrupting the session or, worse, silently splitting
 one transaction into several.
 
+Rollback-only only fires when the failure passes through a `@transactional` frame, and a database error caught straight
+off a DAO does not. Postgres has already deactivated that transaction, and committing a dead transaction is a silent
+no-op, so the boundary would return success for work the database threw away. The decorator therefore asks the session
+whether the transaction is still alive before it returns, and raises `UnexpectedRollback` when it is not. Nothing that
+returns from a boundary can have been discarded.
+
+`current_session()` hands back a `BoundarySession`, not the `AsyncSession` itself. Everything a DAO needs passes
+straight through, but `commit`, `rollback`, `close`, `begin` and `begin_nested` raise `TransactionNotYours`. Without
+that, a single `await current_session().commit()` anywhere inside the boundary would split it, and the half that ran
+before the call would survive the rollback of the half that ran after it.
+
 Commit and rollback themselves come from `async with session.begin()`. SQLAlchemy commits on a clean exit and rolls back
 on any exception, so the decorator has no `try/except` around business logic and never swallows an error.
 
@@ -42,8 +53,11 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **One decorator marks the boundary** — `@transactional` on a service method is the only transaction code in the project.
 - **Automatic propagation** — a nested call, including a call into a different service, joins the caller's transaction instead of opening a second one.
 - **Rollback-only participation** — a failed joined call poisons the transaction, so swallowing the exception cannot produce a half-committed transfer.
+- **A returned boundary really committed** — a transaction Postgres deactivated is caught before the decorator returns, so success is never reported for discarded work.
+- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback` and `close` raise instead of splitting the boundary.
 - **Contention handled with row locks** — `SELECT ... FOR UPDATE` serialises the read-modify-write per account, so concurrent deposits cannot lose updates.
-- **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, so opposite transfers cannot each hold what the other needs.
+- **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, and a ledger entry takes the same lock before its foreign keys do, so no two writers queue in opposite orders.
+- **Money is money** — amounts finer than a cent, non-finite or too large for `Numeric(18, 2)` are refused, because rounding each leg of a transfer separately invents money.
 - **Invisible session** — controller, DAO and models never take, pass or close a session; `current_session()` finds it.
 - **Rollback proven against real Postgres** — the ledger row is flushed before the money moves, so a failure rolls back a write that already reached the database.
 - **The database enforces it too** — `CHECK (balance >= 0)` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind.
@@ -76,13 +90,17 @@ The UI is at `http://localhost:8000/` and Swagger UI at `http://localhost:8000/d
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
 | `GET` | `/` | — | The UI. |
-| `POST` | `/api/accounts` | `{"owner": str, "initial_balance": str}` | `201` and the account. |
+| `POST` | `/api/accounts` | `{"owner": str, "initial_balance": str}` | `201` and the account, `409` if the owner is taken. |
 | `GET` | `/api/accounts` | — | All accounts. |
 | `GET` | `/api/accounts/{id}` | — | One account, `404` if unknown. |
 | `POST` | `/api/accounts/{id}/deposit` | `{"amount": str}` | The updated account. |
 | `POST` | `/api/accounts/{id}/withdraw` | `{"amount": str}` | The updated account, `409` if funds are short. |
 | `POST` | `/api/transfers` | `{"source_id": int, "target_id": int, "amount": str}` | `201` and the ledger entry. |
 | `GET` | `/api/ledger` | — | All committed ledger entries. |
+
+An amount that is not money — finer than a cent, non-finite, or too large for the column — is a `400`, and an id or an
+owner outside what the schema can hold is a `422` from the request model. A wait longer than `lock_timeout` is a `503`.
+No input reaches Postgres in a shape it has to reject with a `500`.
 
 ```bash
 curl -X POST http://localhost:8000/api/transfers \
@@ -105,6 +123,8 @@ For the default Spring settings, yes on everything that matters. The differences
 | Transaction is bound to | the thread (`ThreadLocal`) | the asyncio task (`ContextVar`) |
 | Joined call cancelled, caller swallows it | rollback-only | rollback-only, `CancelledError` is not an `Exception` but is still caught |
 | Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task is refused the inherited session |
+| Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the boundary checks the transaction is still alive |
+| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours`, the session handed out cannot commit |
 | `REQUIRES_NEW`, `NESTED`, `SUPPORTS`, `MANDATORY` | supported | not implemented |
 | `readOnly`, `isolation`, `timeout` | supported | not implemented |
 
@@ -136,14 +156,15 @@ FAILED test_concurrent_deposits_do_not_lose_updates
 FAILED test_transfers_in_opposite_directions_do_not_deadlock
         assert Decimal('240.00') == Decimal('200.00')
 FAILED test_money_is_conserved_under_concurrent_transfers
+FAILED test_recording_a_ledger_entry_does_not_deadlock_with_a_transfer
 
-3 failed, 3 passed in 6.61s
+4 failed, 3 passed in 10.66s
 ```
 
 Ten concurrent deposits of `10.00` into an empty account left `20.00` in it: eight writes were lost. Ten transfers
-running in both directions between two accounts turned `200.00` into `240.00`: the bank invented money. The 6.61s
+running in both directions between two accounts turned `200.00` into `240.00`: the bank invented money. The 10.66s
 runtime is Postgres deadlock detection firing, because without a lock order `alice -> bob` and `bob -> alice` each hold
-the row the other one wants. As shipped, the same file runs in 0.42s with six passes.
+the row the other one wants. As shipped, the same file runs in 0.88s with seven passes.
 
 Two changes fix it, both in the service and DAO, none in `tx.py`:
 
@@ -166,19 +187,34 @@ What the suite checks, all automated in `tests/test_contention.py`:
 | `test_transfers_in_opposite_directions_do_not_deadlock` | 10 transfers alternating direction between two accounts; no exception and the total is unchanged. Caught the deadlock and the invented money. |
 | `test_money_is_conserved_under_concurrent_transfers` | 12 concurrent transfers around 4 accounts; the total is conserved, at least one commits, every refusal is `InsufficientFunds` and the ledger holds exactly one row per commit. |
 | `test_propagation_holds_under_concurrency` | 4 concurrent transfers; every layer inside one transfer shares one session, and the 4 transfers use 4 different sessions. Propagation and isolation at the same time. |
+| `test_recording_a_ledger_entry_does_not_deadlock_with_a_transfer` | 20 interleaved `record(high, low)` and `transfer(low, high)` calls. A ledger insert takes its foreign key locks in column order, not ascending, which deadlocks against a transfer. |
 | `test_a_rolled_back_insert_really_reached_the_database` | `ledger_id_seq` advances on a failed transfer while the row count does not, proving Postgres rolled back a real write. |
 
 Honest limits, since this is a POC and not a payment system:
 
 - Isolation is Postgres' default `READ COMMITTED`. The row locks are what make the balance arithmetic safe, not the isolation level.
-- Rollback-only survives a swallowed database error, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints; the caller gets `UnexpectedRollback` with the driver error as its cause instead of a confusing SQLAlchemy state error.
+- A swallowed database error is caught either way, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints. Caught through a `@transactional` call it is rollback-only; caught straight off a DAO it is the liveness check. Both end as `UnexpectedRollback` rather than a confusing SQLAlchemy state error or, worse, a quiet success.
 - `withdraw()` and `deposit()` re-lock the row they were handed, because both are callable on their own and have to be safe that way. A transfer therefore spends six round trips where four would do. The redundant locks are already held, so they cost latency and never risk.
 - The lock is per account row, so unrelated accounts never block each other, but a hot account serialises every transfer that touches it. That is the intended trade: correctness first.
 - The schema is `create_all`, not migrations. The constraints are DDL, so a database created before them keeps the old shape; `podman-compose down -v` once is what applies them to an existing volume.
 
 ## Key Design Decisions
 
-**The decorator, in full.** This is the entire mechanism:
+**The decorator, in full.** This is the entire mechanism, plus the ten lines that keep the session from being
+committed out from under it:
+
+```python
+class BoundarySession:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    def __getattr__(self, name: str) -> Any:
+        if name in OWNED_BY_THE_BOUNDARY:
+            raise TransactionNotYours(
+                f"{name}() belongs to @transactional, not to the code inside it"
+            )
+        return getattr(self._session, name)
+```
 
 ```python
 def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
@@ -193,7 +229,9 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     joined.failure = error
                 raise
         async with session_factory() as session:
-            context = TransactionContext(session, asyncio.current_task())
+            context = TransactionContext(
+                BoundarySession(session), asyncio.current_task()
+            )
             token = _current.set(context)
             try:
                 async with session.begin():
@@ -201,13 +239,17 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         result = await func(*args, **kwargs)
                     except BaseException as error:
                         if context.failure is not None and error is not context.failure:
-                            raise UnexpectedRollback(ROLLBACK_ONLY) from error
+                            raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
                         raise
                     if context.failure is not None:
                         raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
+                    transaction = session.get_transaction()
+                    if transaction is None or not transaction.is_active:
+                        raise UnexpectedRollback(LOST_TRANSACTION)
                     return result
             finally:
                 _current.reset(token)
+
     return wrapper
 ```
 
@@ -236,7 +278,12 @@ select count(*) from ledger;           -> 1
 
 Three inserts reached the database, one survived.
 
-**Balances are `Numeric(18, 2)`.** Money in floats is a bug, and psycopg maps `numeric` to `Decimal` in both directions.
+**Balances are `Numeric(18, 2)`, and the scale is enforced, not assumed.** Money in floats is a bug, and psycopg maps
+`numeric` to `Decimal` in both directions. `Decimal` alone is not enough: the column rounds to two places on write, and
+a transfer rounds its debit and its credit independently. Moving `0.125` takes `0.12` from one account and gives `0.13`
+to the other, so twenty of them mint a cent each and `CHECK (balance >= 0)` never notices, because the invariant broken
+is conservation, not sign. `_check_money()` refuses anything finer than a cent, non-finite, or too large for the
+column, and the views quantize, so the `Decimal` a caller gets back is the one the row holds.
 
 **Views cross the boundary, entities do not.** A service method returns a frozen `AccountView` or `LedgerView` built
 while the transaction is still open, not the ORM entity. An entity handed to the controller is detached the moment the
@@ -306,7 +353,7 @@ Swagger UI at `/docs`, generated from the controller. Every route here is exactl
 ./build.sh         # venv with python3.14 and dependencies
 ./start.sh         # postgres 18 in podman, then the app on http://localhost:8000
 ./test-client.sh   # a commit and two rollbacks over HTTP, with balances after each
-./test.sh          # 29 tests against a real postgres, in a separate database
+./test.sh          # 45 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
 
@@ -327,12 +374,24 @@ sets that URL before importing anything, and `TEST_DATABASE_URL` overrides it.
 tests/test_api.py::test_transfer_endpoint_moves_money_and_records_the_ledger PASSED
 tests/test_api.py::test_failed_transfer_endpoint_leaves_the_database_untouched PASSED
 tests/test_api.py::test_unknown_account_returns_not_found PASSED
+tests/test_api.py::test_a_duplicate_owner_is_a_conflict_not_a_crash PASSED
+tests/test_api.py::test_an_owner_longer_than_the_column_is_rejected PASSED
+tests/test_api.py::test_an_account_id_outside_the_column_range_is_rejected PASSED
+tests/test_api.py::test_a_sub_cent_amount_is_rejected PASSED
+tests/test_api.py::test_an_amount_too_large_for_the_column_is_rejected PASSED
 tests/test_contention.py::test_concurrent_withdrawals_cannot_overdraw_the_account PASSED
 tests/test_contention.py::test_concurrent_deposits_do_not_lose_updates PASSED
 tests/test_contention.py::test_transfers_in_opposite_directions_do_not_deadlock PASSED
 tests/test_contention.py::test_money_is_conserved_under_concurrent_transfers PASSED
 tests/test_contention.py::test_propagation_holds_under_concurrency PASSED
 tests/test_contention.py::test_a_rolled_back_insert_really_reached_the_database PASSED
+tests/test_contention.py::test_recording_a_ledger_entry_does_not_deadlock_with_a_transfer PASSED
+tests/test_money.py::test_a_sub_cent_transfer_cannot_invent_money PASSED
+tests/test_money.py::test_a_sub_cent_deposit_is_refused PASSED
+tests/test_money.py::test_a_sub_cent_opening_balance_is_refused PASSED
+tests/test_money.py::test_a_non_finite_amount_is_refused PASSED
+tests/test_money.py::test_an_amount_the_column_cannot_hold_is_refused PASSED
+tests/test_money.py::test_the_returned_view_is_the_value_the_database_kept PASSED
 tests/test_transaction_boundary.py::test_committed_work_is_visible_to_the_next_transaction PASSED
 tests/test_transaction_boundary.py::test_transfer_commits_both_legs_and_the_ledger_together PASSED
 tests/test_transaction_boundary.py::test_insufficient_funds_rolls_back_the_ledger_entry PASSED
@@ -353,6 +412,10 @@ tests/test_transaction_boundary.py::test_a_spawned_task_cannot_borrow_the_caller
 tests/test_transaction_boundary.py::test_a_transfer_to_the_same_account_is_rejected PASSED
 tests/test_transaction_boundary.py::test_the_ledger_cannot_reference_an_account_that_does_not_exist PASSED
 tests/test_transaction_boundary.py::test_the_schema_refuses_a_negative_balance PASSED
+tests/test_transaction_boundary.py::test_a_swallowed_dao_error_cannot_be_reported_as_success PASSED
+tests/test_transaction_boundary.py::test_business_code_cannot_commit_the_boundarys_transaction PASSED
+tests/test_transaction_boundary.py::test_unexpected_rollback_names_the_exception_that_poisoned_it PASSED
+tests/test_transaction_boundary.py::test_a_lock_helper_cannot_hand_an_entity_across_a_boundary PASSED
 
-29 passed
+45 passed
 ```

@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, Request
+from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-from sqlalchemy.exc import OperationalError
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError
 
 from db import create_schema
 from service import (
@@ -19,8 +21,12 @@ from service import (
 )
 
 
+MAX_ID = 2_147_483_647
+AccountId = Annotated[int, PathParam(ge=1, le=MAX_ID)]
+
+
 class OpenAccountRequest(BaseModel):
-    owner: str
+    owner: str = Field(min_length=1, max_length=80)
     initial_balance: Decimal = Decimal("0.00")
 
 
@@ -29,8 +35,8 @@ class AmountRequest(BaseModel):
 
 
 class TransferRequest(BaseModel):
-    source_id: int
-    target_id: int
+    source_id: int = Field(ge=1, le=MAX_ID)
+    target_id: int = Field(ge=1, le=MAX_ID)
     amount: Decimal
 
 
@@ -84,6 +90,22 @@ async def handle_invalid_transfer(request: Request, exc: Exception) -> JSONRespo
     return JSONResponse(status_code=400, content={"error": str(exc)})
 
 
+@app.exception_handler(IntegrityError)
+async def handle_conflict(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={"error": "the write conflicts with a row that already exists"},
+    )
+
+
+@app.exception_handler(DataError)
+async def handle_out_of_range(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={"error": "a value in the request is out of range for the schema"},
+    )
+
+
 @app.exception_handler(OperationalError)
 async def handle_database_unavailable(
     request: Request, exc: Exception
@@ -105,17 +127,17 @@ async def list_accounts() -> list[dict]:
 
 
 @app.get("/api/accounts/{account_id}")
-async def get_account(account_id: int) -> dict:
+async def get_account(account_id: AccountId) -> dict:
     return as_account(await service.get_account(account_id))
 
 
 @app.post("/api/accounts/{account_id}/deposit")
-async def deposit(account_id: int, body: AmountRequest) -> dict:
+async def deposit(account_id: AccountId, body: AmountRequest) -> dict:
     return as_account(await service.deposit(account_id, body.amount))
 
 
 @app.post("/api/accounts/{account_id}/withdraw")
-async def withdraw(account_id: int, body: AmountRequest) -> dict:
+async def withdraw(account_id: AccountId, body: AmountRequest) -> dict:
     return as_account(await service.withdraw(account_id, body.amount))
 
 
