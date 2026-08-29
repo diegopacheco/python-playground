@@ -26,9 +26,11 @@ OWNED_BY_THE_BOUNDARY = frozenset(
         "begin",
         "begin_nested",
         "connection",
+        "get_bind",
         "get_transaction",
         "sync_session",
         "run_sync",
+        "_proxied",
     }
 )
 
@@ -49,6 +51,21 @@ class TransactionNotYours(RuntimeError):
     pass
 
 
+def _running_task() -> asyncio.Task[Any] | None:
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return None
+
+
+def _check_task(context: "TransactionContext") -> None:
+    if context.task is not _running_task():
+        raise CrossTaskTransaction(
+            "the transaction belongs to the task that opened it, an AsyncSession "
+            "cannot be driven from anywhere else"
+        )
+
+
 class BoundarySession:
     def __init__(self, session: AsyncSession, context: "TransactionContext") -> None:
         self._session = session
@@ -59,9 +76,10 @@ class BoundarySession:
             raise NoActiveTransaction(
                 "the transaction this session belonged to has already ended"
             )
+        _check_task(self._context)
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
-                f"{name}() belongs to @transactional, not to the code inside it"
+                f"{name} belongs to @transactional, not to the code inside it"
             )
         if name in UNGUARDABLE:
             raise TransactionNotYours(
@@ -96,20 +114,10 @@ class TransactionContext:
 _current: ContextVar[TransactionContext | None] = ContextVar("current", default=None)
 
 
-def _running_task() -> asyncio.Task[Any] | None:
-    try:
-        return asyncio.current_task()
-    except RuntimeError:
-        return None
-
-
 def _active() -> TransactionContext | None:
     context = _current.get()
-    if context is not None and context.task is not _running_task():
-        raise CrossTaskTransaction(
-            "the transaction belongs to the task that opened it, an AsyncSession "
-            "cannot be driven from anywhere else"
-        )
+    if context is not None:
+        _check_task(context)
     return context
 
 

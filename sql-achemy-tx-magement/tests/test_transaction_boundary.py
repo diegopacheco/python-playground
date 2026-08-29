@@ -2,16 +2,18 @@ import asyncio
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError, ProgrammingError
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError, InvalidRequestError, ProgrammingError
 
 from dao import AccountDAO, LedgerDAO
+from models import Account
 from service import (
     AccountNotFound,
     BankService,
     InsufficientFunds,
     InvalidTransfer,
     LedgerService,
+    _lock_accounts,
 )
 from tx import (
     CrossTaskTransaction,
@@ -553,8 +555,17 @@ async def test_business_code_cannot_reach_the_sync_session_and_commit(
 async def test_every_way_of_ending_the_transaction_is_refused(bank: BankService):
     """close() and aclose() were refused while reset(), invalidate() and close_all()
     ended the same transaction the same way. The liveness check caught them, but a
-    refusal that names the call is the answer the caller can act on."""
-    for name in ("reset", "invalidate", "close_all", "run_sync", "sync_session"):
+    refusal that names the call is the answer the caller can act on. _proxied and
+    get_bind are the two that reach past the boundary rather than ending it."""
+    for name in (
+        "reset",
+        "invalidate",
+        "close_all",
+        "run_sync",
+        "sync_session",
+        "_proxied",
+        "get_bind",
+    ):
 
         @transactional
         async def caller(name=name) -> None:
@@ -598,3 +609,120 @@ async def test_transactional_refuses_a_function_that_is_not_async():
         @transactional
         def not_async() -> int:
             return 1
+
+
+async def test_a_captured_session_cannot_be_driven_from_a_spawned_task(bank: BankService):
+    """current_session() refuses a spawned task, but the wrapper it hands back travels.
+    Capturing it inside the boundary and using the object from a task got past the
+    lookup entirely, so the check has to live on the object as well as on the lookup."""
+
+    @transactional
+    async def caller() -> int:
+        session = current_session()
+
+        async def spawned() -> int:
+            result = await session.execute(text("select 1"))
+            return result.scalar_one()
+
+        return await asyncio.create_task(spawned())
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+
+async def test_a_spawned_task_cannot_write_through_a_captured_session(bank: BankService):
+    """The read is the symptom; this is the damage. The spawned task's INSERT used to
+    be committed by a boundary that never saw it, while the same task calling any
+    @transactional method or current_session() was refused."""
+
+    @transactional
+    async def caller() -> None:
+        session = current_session()
+
+        async def spawned() -> None:
+            await session.execute(
+                text("insert into accounts (owner, balance) values ('ghost', 1.00)")
+            )
+
+        await asyncio.create_task(spawned())
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_captured_session_cannot_be_driven_from_a_thread(bank: BankService):
+    """asyncio.to_thread copies the context, and the wrapper can simply be closed over.
+    The worker has no running loop, so the task lookup answers 'no task' and the
+    refusal is the same one a spawned task gets."""
+
+    @transactional
+    async def caller() -> None:
+        session = current_session()
+        await asyncio.to_thread(lambda: session.add(Account(owner="ghost", balance=1)))
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+
+async def test_the_three_names_for_the_sync_session_are_all_refused(bank: BankService):
+    """sync_session, run_sync and _proxied are the same object. Blocking two of them
+    left the third open, and a commit through it splits the boundary the same way."""
+
+    @transactional
+    async def same_object() -> bool:
+        session = current_session()
+        return session._session._proxied is session._session.sync_session
+
+    assert await same_object() is True
+
+    for name in ("sync_session", "run_sync", "_proxied"):
+
+        @transactional
+        async def caller(name=name) -> None:
+            getattr(current_session(), name)
+
+        with pytest.raises(TransactionNotYours):
+            await caller()
+
+
+async def test_the_stream_refusal_cannot_be_routed_around_through_execute(
+    bank: BankService,
+):
+    """stream() is refused because a server-side cursor fails where the boundary
+    cannot see it. execute(stream_results=True) asks for the same cursor, so the
+    refusal is only worth anything if that route is closed too. SQLAlchemy shuts it
+    before a statement is sent, which is why the work either side of it still commits."""
+    swallowed = []
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        try:
+            await current_session().execute(
+                select(Account).execution_options(stream_results=True)
+            )
+        except InvalidRequestError as error:
+            swallowed.append(error)
+        return "the work is done"
+
+    assert await caller() == "the work is done"
+    assert len(swallowed) == 1
+    assert [account.owner for account in await bank.list_accounts()] == ["carol"]
+
+
+async def test_a_missing_account_is_refused_even_when_the_ids_are_a_generator(
+    bank: BankService,
+):
+    """_lock_accounts takes an Iterable and used to walk it twice: find_all_for_update
+    consumed it into a set, and the existence check that follows then found nothing to
+    check. A generator silently turned AccountNotFound into a foreign key violation,
+    which the controller reports as a 409 over a row that was never there."""
+
+    @transactional
+    async def caller() -> list:
+        return await _lock_accounts(AccountDAO(), (account_id for account_id in (4242,)))
+
+    with pytest.raises(AccountNotFound):
+        await caller()

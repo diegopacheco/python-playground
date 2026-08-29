@@ -24,6 +24,12 @@ from service import (
     InvalidTransfer,
     LedgerView,
 )
+from tx import (
+    CrossTaskTransaction,
+    NoActiveTransaction,
+    TransactionNotYours,
+    UnexpectedRollback,
+)
 
 
 MAX_ID = 2_147_483_647
@@ -121,6 +127,21 @@ async def handle_database_unavailable(
         content={
             "error": "the database refused to wait for a lock, ran out of connections "
             "or was unreachable"
+        },
+    )
+
+
+@app.exception_handler(UnexpectedRollback)
+@app.exception_handler(NoActiveTransaction)
+@app.exception_handler(CrossTaskTransaction)
+@app.exception_handler(TransactionNotYours)
+async def handle_transaction_misuse(request: Request, exc: Exception) -> JSONResponse:
+    cause = exc.__cause__
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": str(exc),
+            "cause": None if cause is None else f"{type(cause).__name__}: {cause}",
         },
     )
 

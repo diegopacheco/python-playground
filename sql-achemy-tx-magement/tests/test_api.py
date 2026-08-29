@@ -1,14 +1,18 @@
 import asyncio
+import inspect
+import re
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import controller
 import tx
 from controller import app
 from db import DATABASE_URL, TIMEOUTS
-from service import BankService
+from service import BankService, InsufficientFunds
 from tx import transactional
 
 
@@ -156,3 +160,61 @@ async def test_a_request_that_cannot_get_a_connection_is_unavailable_not_a_crash
         except BaseException:
             pass
         await one_connection.dispose()
+
+
+async def test_a_non_finite_amount_is_rejected_by_the_request_model(
+    client: httpx.AsyncClient, bank: BankService
+):
+    """NaN and Infinity never reach the service: the request model refuses them, so
+    they are a 422 and not the 400 every other bad amount gets. _check_money() still
+    refuses them for a caller that reaches the service directly."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    for amount in ("NaN", "Infinity", "-Infinity"):
+        response = await client.post(
+            f"/api/accounts/{account.id}/deposit", json={"amount": amount}
+        )
+        assert response.status_code == 422, amount
+
+    assert (await client.get(f"/api/accounts/{account.id}")).json()["balance"] == "100.00"
+
+
+async def test_a_poisoned_transaction_reaching_the_controller_names_its_cause(
+    client: httpx.AsyncClient, bank: BankService, monkeypatch: pytest.MonkeyPatch
+):
+    """UnexpectedRollback means the service swallowed a failure it should not have,
+    which is a bug and a 500. Without a handler it was an opaque 'Internal Server
+    Error' that threw away the diagnosis the boundary worked to produce."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def swallowing_deposit(account_id: int, amount: Decimal):
+        try:
+            await bank.withdraw(account_id, Decimal("999.00"))
+        except InsufficientFunds:
+            pass
+        return await bank.get_account(account_id)
+
+    monkeypatch.setattr(controller.service, "deposit", swallowing_deposit)
+
+    response = await client.post(
+        f"/api/accounts/{account.id}/deposit", json={"amount": "1.00"}
+    )
+
+    assert response.status_code == 500
+    assert response.json()["cause"].startswith("InsufficientFunds")
+    assert (await client.get(f"/api/accounts/{account.id}")).json()["balance"] == "10.00"
+
+
+async def test_the_how_it_works_page_shows_the_decorator_that_ships(
+    client: httpx.AsyncClient,
+):
+    """The page annotates tx.py line by line, so a snippet that drifts from the source
+    documents a boundary nobody is running. It once showed a recorder that caught
+    DBAPIError and not CancelledError, which is a feature this README sells."""
+    page = (await client.get("/")).text
+    embedded = re.search(r"const TX_CODE = `(.*?)`;", page, re.S).group(1)
+    source = Path(inspect.getsourcefile(tx)).read_text()
+
+    assert source.rstrip("\n").endswith(embedded)
+    assert embedded.startswith("def _running_task()")

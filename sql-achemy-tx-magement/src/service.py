@@ -73,9 +73,10 @@ def _check_balance(value: Decimal) -> None:
 async def _lock_accounts(
     accounts: AccountDAO, account_ids: Iterable[int]
 ) -> list[Account]:
-    locked = await accounts.find_all_for_update(account_ids)
+    wanted = tuple(account_ids)
+    locked = await accounts.find_all_for_update(wanted)
     found = {account.id for account in locked}
-    for account_id in account_ids:
+    for account_id in wanted:
         if account_id not in found:
             raise AccountNotFound(f"account {account_id} does not exist")
     return locked
