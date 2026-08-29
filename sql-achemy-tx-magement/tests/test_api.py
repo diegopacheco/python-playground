@@ -218,3 +218,59 @@ async def test_the_how_it_works_page_shows_the_decorator_that_ships(
 
     assert source.rstrip("\n").endswith(embedded)
     assert embedded.startswith("def _running_task()")
+
+
+async def test_a_taskgroup_inside_a_boundary_names_its_refusal(
+    client: httpx.AsyncClient, bank: BankService, monkeypatch: pytest.MonkeyPatch
+):
+    """A TaskGroup is the shape fan-out takes in modern async code, and it wraps what
+    its children raise. CrossTaskTransaction arrives inside an ExceptionGroup, which is
+    not an instance of it, so the handler that exists to name the diagnosis never
+    matched and the caller got an opaque 'Internal Server Error' instead."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def grouped_deposit(account_id: int, amount: Decimal):
+        async with asyncio.TaskGroup() as group:
+            group.create_task(bank.list_accounts())
+
+    monkeypatch.setattr(controller.service, "deposit", grouped_deposit)
+
+    response = await client.post(
+        f"/api/accounts/{account.id}/deposit", json={"amount": "1.00"}
+    )
+
+    assert response.status_code == 500
+    assert "CrossTaskTransaction" in response.json()["cause"]
+    assert (await client.get(f"/api/accounts/{account.id}")).json()["balance"] == "10.00"
+
+
+async def test_a_blank_owner_is_refused_by_the_layer_that_can_see_it(
+    client: httpx.AsyncClient,
+):
+    """min_length on the request model refuses the empty string, so that one is a 422.
+    A string of spaces is a value the schema can hold and an account nobody can name, so
+    it is the service that refuses it and a 400, the same way a sub-cent amount is."""
+    assert (
+        await client.post("/api/accounts", json={"owner": "", "initial_balance": "1.00"})
+    ).status_code == 422
+
+    response = await client.post(
+        "/api/accounts", json={"owner": "   ", "initial_balance": "1.00"}
+    )
+
+    assert response.status_code == 400
+    assert (await client.get("/api/accounts")).json() == []
+
+
+async def test_the_readme_shows_the_decorator_that_ships():
+    """The README prints the mechanism in full and calls it that, so a block that has
+    drifted from the source documents a boundary nobody is running. The How it works
+    page drifted exactly that way once, which is why both are pinned now."""
+    source = Path(inspect.getsourcefile(tx))
+    readme = (source.parent.parent / "README.md").read_text()
+    blocks = re.findall(r"```python\n(.*?)```", readme, re.S)
+
+    assert len(blocks) == 2
+    for block in blocks:
+        assert block in source.read_text(), block.splitlines()[0]

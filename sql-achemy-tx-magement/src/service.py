@@ -28,6 +28,10 @@ class InvalidTransfer(Exception):
     pass
 
 
+class InvalidOwner(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class AccountView:
     id: int
@@ -63,6 +67,11 @@ def _check_transfer(source_id: int, target_id: int, amount: Decimal) -> None:
     if source_id == target_id:
         raise InvalidTransfer("source and target must be different accounts")
     _check_amount(amount)
+
+
+def _check_owner(value: str) -> None:
+    if not value.strip():
+        raise InvalidOwner("owner must not be blank")
 
 
 def _check_balance(value: Decimal) -> None:
@@ -121,6 +130,7 @@ class BankService:
 
     @transactional
     async def open_account(self, owner: str, initial_balance: Decimal) -> AccountView:
+        _check_owner(owner)
         _check_money(initial_balance)
         if initial_balance < 0:
             raise InvalidAmount("initial balance cannot be negative")

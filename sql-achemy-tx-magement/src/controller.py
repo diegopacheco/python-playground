@@ -21,6 +21,7 @@ from service import (
     BankService,
     InsufficientFunds,
     InvalidAmount,
+    InvalidOwner,
     InvalidTransfer,
     LedgerView,
 )
@@ -97,6 +98,7 @@ async def handle_invalid_amount(request: Request, exc: Exception) -> JSONRespons
 
 
 @app.exception_handler(InvalidTransfer)
+@app.exception_handler(InvalidOwner)
 async def handle_invalid_transfer(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": str(exc)})
 
@@ -142,6 +144,23 @@ async def handle_transaction_misuse(request: Request, exc: Exception) -> JSONRes
         content={
             "error": str(exc),
             "cause": None if cause is None else f"{type(cause).__name__}: {cause}",
+        },
+    )
+
+
+def leaves(error: BaseException) -> list[BaseException]:
+    if isinstance(error, BaseExceptionGroup):
+        return [leaf for sub in error.exceptions for leaf in leaves(sub)]
+    return [error]
+
+
+@app.exception_handler(ExceptionGroup)
+async def handle_exception_group(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": str(exc),
+            "cause": "; ".join(f"{type(e).__name__}: {e}" for e in leaves(exc)),
         },
     )
 

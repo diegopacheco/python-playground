@@ -1,16 +1,22 @@
 import asyncio
 from decimal import Decimal
+from typing import Any
+from weakref import ReferenceType
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import Engine, select, text
 from sqlalchemy.exc import IntegrityError, InvalidRequestError, ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.orm import Session
 
 from dao import AccountDAO, LedgerDAO
+from db import engine
 from models import Account
 from service import (
     AccountNotFound,
     BankService,
     InsufficientFunds,
+    InvalidOwner,
     InvalidTransfer,
     LedgerService,
     _lock_accounts,
@@ -555,8 +561,10 @@ async def test_business_code_cannot_reach_the_sync_session_and_commit(
 async def test_every_way_of_ending_the_transaction_is_refused(bank: BankService):
     """close() and aclose() were refused while reset(), invalidate() and close_all()
     ended the same transaction the same way. The liveness check caught them, but a
-    refusal that names the call is the answer the caller can act on. _proxied and
-    get_bind are the two that reach past the boundary rather than ending it."""
+    refusal that names the call is the answer the caller can act on. The rest reach
+    past the boundary rather than ending it: _proxied and _proxy_objects are two more
+    names for the sync Session, get_bind and bind are two names for the engine, and
+    identity_map is the session's own state under a name that is not a method."""
     for name in (
         "reset",
         "invalidate",
@@ -564,7 +572,10 @@ async def test_every_way_of_ending_the_transaction_is_refused(bank: BankService)
         "run_sync",
         "sync_session",
         "_proxied",
+        "_proxy_objects",
         "get_bind",
+        "bind",
+        "identity_map",
     ):
 
         @transactional
@@ -888,5 +899,145 @@ async def test_a_database_error_that_never_reached_postgres_is_still_poison(
 
     with pytest.raises(UnexpectedRollback):
         await caller()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_the_engine_is_refused_under_both_of_its_names(bank: BankService):
+    """get_bind() is refused because it hands out the engine, and `bind` is that same
+    engine under a name that is not a method. It is set on the instance, so it never
+    appears in dir(AsyncSession) and an audit of the class misses it. What comes back
+    is the application's own engine, so a write made through it runs on a second
+    connection, commits itself, and survives the rollback the boundary performs."""
+
+    @transactional
+    async def what_bind_hands_back() -> bool:
+        return current_session()._session.bind is engine
+
+    assert await what_bind_hands_back() is True
+
+    for name in ("bind", "get_bind"):
+
+        @transactional
+        async def caller(name=name) -> None:
+            getattr(current_session(), name)
+
+        with pytest.raises(TransactionNotYours):
+            await caller()
+
+
+async def test_the_proxy_registry_is_a_fifth_name_for_the_sync_session(
+    bank: BankService,
+):
+    """sync_session, run_sync, _proxied and object_session were refused while
+    _proxy_objects, the registry AsyncSession keeps so it can map a sync Session back
+    to its async wrapper, handed the same Session out through a weakref. A commit
+    through it happens to fail with MissingGreenlet, which is the accident
+    object_session is already refused rather than relying on."""
+
+    @transactional
+    async def the_registry_holds_it() -> bool:
+        raw = current_session()._session
+        return any(ref() is raw.sync_session for ref in raw._proxy_objects)
+
+    assert await the_registry_holds_it() is True
+
+    @transactional
+    async def caller() -> None:
+        getattr(current_session(), "_proxy_objects")
+
+    with pytest.raises(TransactionNotYours):
+        await caller()
+
+
+async def test_the_identity_map_is_not_handed_out(bank: BankService):
+    """A callable is re-checked inside every call, but a non-callable is the value
+    itself and no later check can reach it. identity_map is the session's live internal
+    mapping, so handing it out hands out the session under a name the guard cannot
+    follow: it crosses into a spawned task or a worker thread with nothing left to
+    refuse it, and every entity the DAOs have loaded comes with it."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def the_map_is_live() -> bool:
+        entity = await AccountDAO().find(account.id)
+        held = current_session()._session.identity_map.values()
+        return any(loaded is entity for loaded in held)
+
+    assert await the_map_is_live() is True
+
+    @transactional
+    async def caller() -> None:
+        getattr(current_session(), "identity_map")
+
+    with pytest.raises(TransactionNotYours):
+        await caller()
+
+
+async def test_a_context_manager_attribute_is_not_turned_into_a_function(
+    bank: BankService,
+):
+    """The wrapper guarded anything callable, and a @contextmanager object is callable
+    because it doubles as a decorator. no_autoflush therefore came back as a plain
+    function with no __enter__, and `with current_session().no_autoflush:` was a
+    TypeError: the wrapper silently broke a session API instead of guarding it or
+    refusing it. Only routines are wrapped now, so the block below suppresses the
+    flush it is supposed to suppress."""
+    await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def rows_seen() -> tuple[int, int]:
+        session = current_session()
+        session.add(Account(owner="carol", balance=Decimal("1.00")))
+        with session.no_autoflush:
+            held_back = await session.execute(select(Account))
+            inside = len(held_back.scalars().all())
+        flushed = await session.execute(select(Account))
+        return inside, len(flushed.scalars().all())
+
+    assert await rows_seen() == (1, 2)
+
+
+async def test_no_name_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
+    bank: BankService,
+):
+    """A block list is only as good as the audit that wrote it, and `bind` was missed
+    because it is an instance attribute that never shows up in dir(AsyncSession). This
+    walks every name the session actually has and fails on any that still hands back an
+    engine or the sync Session, including through the weakrefs and dicts that
+    _proxy_objects hid one behind."""
+
+    def targets(value: Any) -> list[Any]:
+        if isinstance(value, dict):
+            value = list(value) + list(value.values())
+        if not isinstance(value, list):
+            value = [value]
+        return [held() if isinstance(held, ReferenceType) else held for held in value]
+
+    @transactional
+    async def sweep() -> list[str]:
+        wrapper = current_session()
+        escapes = (Engine, AsyncEngine, Session, AsyncSession)
+        leaked = []
+        for name in dir(wrapper._session):
+            if name.startswith("__"):
+                continue
+            try:
+                value = getattr(wrapper, name)
+            except (TransactionNotYours, AttributeError):
+                continue
+            if any(isinstance(held, escapes) for held in targets(value)):
+                leaked.append(name)
+        return leaked
+
+    assert await sweep() == []
+
+
+async def test_a_blank_owner_is_refused(bank: BankService):
+    """min_length on the request model refuses the empty string and accepts a string of
+    spaces, which is an account nobody can name. The service is the layer that has to
+    know that, the same way it re-checks the amount the model has already parsed."""
+    with pytest.raises(InvalidOwner):
+        await bank.open_account("   ", Decimal("10.00"))
 
     assert await bank.list_accounts() == []

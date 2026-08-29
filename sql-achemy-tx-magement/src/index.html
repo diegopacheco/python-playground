@@ -153,13 +153,18 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
     <p class="note"><b>Lines 30&ndash;33</b> are what a DAO actually holds. <code>current_session()</code> hands back
        this wrapper, not the <code>AsyncSession</code>, so everything a DAO needs passes through but
        <code>commit</code>, <code>rollback</code>, <code>close</code>, <code>aclose</code>, <code>begin</code>,
-       <code>connection</code>, <code>get_bind</code>, <code>get_transaction</code>, <code>sync_session</code>,
-       <code>run_sync</code>, <code>_proxied</code> and <code>object_session</code> raise. One
+       <code>connection</code>, <code>get_bind</code>, <code>bind</code>, <code>get_transaction</code>,
+       <code>identity_map</code>, <code>sync_session</code>, <code>run_sync</code>, <code>_proxied</code>,
+       <code>_proxy_objects</code> and <code>object_session</code> raise. One
        <code>await current_session().commit()</code> inside the boundary would otherwise split it, and the half that
        ran before the call would survive the rollback of the half that ran after it. <code>sync_session</code>,
-       <code>run_sync</code>, <code>_proxied</code> and <code>object_session</code> are four names for the same sync
-       <code>Session</code>, so blocking three of them blocked nothing. It is a guard against a mistake and not a
-       sandbox: <code>_session</code> is still an attribute.</p>
+       <code>run_sync</code>, <code>_proxied</code>, <code>object_session</code> and <code>_proxy_objects</code> are
+       five names for the same sync <code>Session</code>, so blocking four of them blocked nothing. <code>bind</code>
+       is the one that shows what a list costs: it is the same engine <code>get_bind</code> is refused for, assigned on
+       the instance rather than declared on the class, so it never appears in <code>dir(AsyncSession)</code> and the
+       audit that wrote the list did not see it. A write through it ran on its own connection, committed itself, and
+       survived the rollback the boundary performed around it. It is a guard against a mistake and not a sandbox:
+       <code>_session</code> is still an attribute.</p>
     <p class="note"><b>Lines 34&ndash;39</b> refuse <code>stream()</code> and <code>stream_scalars()</code>, which are
        the one hole in the recorder below. A server-side cursor raises while the result is iterated, not inside the
        session call the boundary wrapped, so a swallowed failure there left the transaction poisoned with nothing
@@ -168,10 +173,15 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        nothing. <code>execute()</code> asked for the same cursor with <code>stream_results</code> or
        <code>yield_per</code> is closed by SQLAlchemy itself, which shuts the cursor and raises before a row is read,
        so the transaction survives that route rather than escaping through it.</p>
-    <p class="note"><b>Lines 40&ndash;50</b> wrap the calls that are not coroutines. <code>add()</code> and
+    <p class="note"><b>Lines 40&ndash;50</b> wrap the methods that are not coroutines. <code>add()</code> and
        <code>expunge()</code> stage work without any await, so they used to be handed back untouched and were the one
        route with no guard on it in any form: a worker thread staged an entity through a captured <code>add</code> and
-       the boundary flushed and committed the row.</p>
+       the boundary flushed and committed the row. <b>Line 41</b> asks for a routine and not for anything callable,
+       which is the difference between guarding a session API and breaking one. A <code>@contextmanager</code> object
+       is callable, because a context manager doubles as a decorator, so <code>no_autoflush</code> came back wrapped in
+       a plain function with no <code>__enter__</code> and <code>with current_session().no_autoflush:</code> was a
+       <code>TypeError</code>. Everything the wrapper will not allow says so and names itself; silently changing what a
+       call means is the one thing it must never do.</p>
     <p class="note"><b>Lines 52&ndash;62</b> are why a swallowed database error cannot be committed over. Every await a
        DAO makes goes through here, so a <code>DBAPIError</code> or a cancelled statement is recorded as the failure
        that poisoned the context before the caller ever gets the chance to catch it. It has to happen here rather than
@@ -313,7 +323,7 @@ class BoundarySession:
                 "transaction instead of being committed over"
             )
         attribute = getattr(self._session, name)
-        if not callable(attribute):
+        if not inspect.isroutine(attribute):
             return attribute
         if not inspect.iscoroutinefunction(attribute):
 

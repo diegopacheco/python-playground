@@ -27,11 +27,14 @@ OWNED_BY_THE_BOUNDARY = frozenset(
         "begin_nested",
         "connection",
         "get_bind",
+        "bind",
         "get_transaction",
+        "identity_map",
         "sync_session",
         "object_session",
         "run_sync",
         "_proxied",
+        "_proxy_objects",
     }
 )
 
@@ -92,7 +95,7 @@ class BoundarySession:
                 "transaction instead of being committed over"
             )
         attribute = getattr(self._session, name)
-        if not callable(attribute):
+        if not inspect.isroutine(attribute):
             return attribute
         if not inspect.iscoroutinefunction(attribute):
 
