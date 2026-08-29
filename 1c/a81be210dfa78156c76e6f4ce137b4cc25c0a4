@@ -1,0 +1,21 @@
+sql-achemy-tx-magement/tests/test_transaction_boundary.py
+  s_116faac53e03cf::t_c186808e5d5a45 2004-2035
+sql-achemy-tx-magement/README.md
+  s_116faac53e03cf::t_4ea899e90ec7b1 5-7,476,770,860,957
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "1ca81be210dfa78156c76e6f4ce137b4cc25c0a4",
+  "prompts": {},
+  "sessions": {
+    "s_116faac53e03cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c37a8c39-7acc-42a4-a4c4-ccc8dfe71e69",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
