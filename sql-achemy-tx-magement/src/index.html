@@ -137,7 +137,7 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        otherwise drive one <code>AsyncSession</code> from several tasks at once. A worker thread from
        <code>asyncio.to_thread()</code> gets the copy too and has no running loop, which is why the task lookup answers
        "no task" instead of raising about the event loop.</p>
-    <p class="note"><b>Lines 16&ndash;37</b> wrap the context managers the session hands out, which is the one route
+    <p class="note"><b>Lines 29&ndash;45</b> wrap the context managers the session hands out, which is the one route
        a block list of names cannot see because the leak is not the name, it is what the object carries.
        <code>no_autoflush</code> is a <code>@contextmanager</code>, and a <code>@contextmanager</code> yields the sync
        <code>Session</code> and keeps it in <code>gi_frame.f_locals</code> as well &mdash; so the name that stays
@@ -145,23 +145,23 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        <code>_proxied</code>, <code>object_session</code> and <code>_proxy_objects</code> are all refused for, and
        <code>greenlet_spawn(session.commit)</code> through it is exactly what <code>run_sync</code> would have done.
        Refusing the name would break a session API the wrapper is supposed to pass through, so entering and exiting
-       cross and nothing else does: line 29 gives the boundary wrapper back rather than the session the manager
-       yielded, and line 36 refuses every other name on the way in.</p>
-    <p class="note"><b>Lines 45&ndash;50</b> are the two refusals every route into the session shares. The first is the
+       cross and nothing else does: line 38 gives the boundary wrapper back rather than the session the manager
+       yielded, and line 45 refuses every other name on the way in.</p>
+    <p class="note"><b>Lines 53&ndash;58</b> are the two refusals every route into the session shares. The first is the
        wrapper going dead with its boundary: an <code>AsyncSession</code> autobegins on next use, so a session kept past
        the call that opened it would quietly start a second transaction that nothing can ever commit and never hand its
        connection back to the pool. The second is the task check, which <code>current_session()</code> alone was not
        enough for: capture the wrapper inside the boundary, hand the object to a spawned task, and that task drove the
        session anyway while the boundary committed its writes.</p>
-    <p class="note"><b>Line 84 and lines 95 and 102</b> are why one check is not three. Guarding only the lookup guards
+    <p class="note"><b>Line 116 and lines 127 and 134</b> are why one check is not three. Guarding only the lookup guards
        the object and not the use, and what travels into another task does not have to be the wrapper: a bound method
        taken off it inside the boundary carried no check at all, so <code>execute = current_session().execute</code>
        handed to a spawned task put the ghost row back and the boundary committed it. Re-checking inside the callable
        closes the captured method, the captured method used after the boundary returned, and
        <code>gather(session.execute(...), session.execute(...))</code> &mdash; where the lookup happens on the right
        task and only the await moves &mdash; with the one check the lookup could never make.</p>
-    <p class="note"><b>Lines 52&ndash;56</b> are the block list, and every route into the session runs it: the lookup on
-       line 85 and the assignment on line 75 share this one method. <code>current_session()</code> hands back this
+    <p class="note"><b>Lines 61&ndash;64</b> are the block list, and every route into the session runs it: the lookup on
+       line 117 and the assignment on line 107 share this one method. <code>current_session()</code> hands back this
        wrapper, not the <code>AsyncSession</code>, so everything a DAO needs passes through but <code>commit</code>,
        <code>rollback</code>, <code>close</code>, <code>aclose</code>, <code>begin</code>, <code>connection</code>,
        <code>get_bind</code>, <code>bind</code>, <code>get_transaction</code>, <code>get_nested_transaction</code>,
@@ -176,9 +176,9 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        audit that wrote the list did not see it. A write through it ran on its own connection, committed itself, and
        survived the rollback the boundary performed around it. It is a guard against a mistake and not a sandbox, and
        the list can only name what lives on the session: <code>_session</code> is still an attribute, and
-       <code>result.connection</code> is not a session name at all, which is what lines 177&ndash;182 answer for. What
-       an allowed name <em>carries</em> is not a session name either, which is what lines 16&ndash;37 answer for.</p>
-    <p class="note"><b>Lines 57&ndash;62</b> refuse <code>stream()</code> and <code>stream_scalars()</code>, which are
+       <code>result.connection</code> is not a session name at all, which is what lines 208&ndash;215 answer for. What
+       an allowed name <em>carries</em> is not a session name either, which is what lines 29&ndash;45 answer for.</p>
+    <p class="note"><b>Lines 65&ndash;70</b> refuse <code>stream()</code> and <code>stream_scalars()</code>, which are
        the one hole in the recorder below. A server-side cursor raises while the result is iterated, not inside the
        session call the boundary wrapped, so a swallowed failure there left the transaction poisoned with nothing
        recording it and the boundary returned success for work Postgres had thrown away. Guarding the result object
@@ -186,63 +186,70 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        nothing. <code>execute()</code> asked for the same cursor with <code>stream_results</code> or
        <code>yield_per</code> is closed by SQLAlchemy itself, which shuts the cursor and raises before a row is read,
        so the transaction survives that route rather than escaping through it.</p>
-    <p class="note"><b>Lines 64&ndash;68</b> refuse the session's own context manager.
+    <p class="note"><b>Lines 88&ndash;92</b> refuse the session's own context manager.
        <code>async with session:</code> closes it on the way out, which is <code>close()</code> reached through a
-       syntax no block list can see: Python looks <code>__aenter__</code> up on the type, so the name check on line 85
+       syntax no block list can see: Python looks <code>__aenter__</code> up on the type, so the name check on line 117
        never runs. It used to be a <code>TypeError</code> about a missing <code>__aexit__</code>, which is a refusal by
        accident rather than an answer the caller can act on.</p>
-    <p class="note"><b>Lines 70&ndash;76</b> guard the assignment, which is the route a block list on the lookup alone
+    <p class="note"><b>Lines 94&ndash;100</b> are the two session APIs a wrapper made of <code>__getattr__</code>
+       loses. <code>entity in session</code> and <code>list(session)</code> are resolved on the type, so they never
+       reached the lookup and never reached the session either: both were a <code>TypeError</code> naming
+       <code>BoundarySession</code>. That is the wrapper breaking a session API instead of passing it through or
+       refusing it by name, which is the one thing this design is not allowed to do, and it is the same blind spot
+       lines 88&ndash;92 cover from the other side.</p>
+    <p class="note"><b>Lines 102&ndash;108</b> guard the assignment, which is the route a block list on the lookup alone
        can never close. <code>current_session().autoflush = False</code> used to set the attribute on the wrapper and
        never reach the session, and because an instance attribute shadows <code>__getattr__</code>, reading it back
        returned the value that had not been applied: the wrapper reported the setting while the session went on
-       flushing. That is exactly the silent change of meaning line 87 exists to prevent. The sharper half is that the
+       flushing. That is exactly the silent change of meaning line 119 exists to prevent. The sharper half is that the
        assignment could switch the block list off &mdash; <code>current_session().bind = ...</code> shadowed the
        refusal, so the next read handed back the assigned value instead of raising. Assignment now takes the same
        guard and the same block list the lookup does, and lands on the real session.</p>
-    <p class="note"><b>Lines 78&ndash;81</b> guard the deletion, which is the third route into an attribute and the
+    <p class="note"><b>Lines 110&ndash;113</b> guard the deletion, which is the third route into an attribute and the
        one that was left open when the read and the assignment were closed. It reached nothing on the session, so a
        <code>del</code> the caller believed had landed had not; and because the two names the wrapper keeps for itself
-       live in its own <code>__dict__</code>, deleting one of those left the lookup on line 83 recursing into itself
+       live in its own <code>__dict__</code>, deleting one of those left the lookup on line 115 recursing into itself
        until Python gave up. A <code>RecursionError</code> names nothing, and every other route the wrapper will not
        allow says what it is.</p>
-    <p class="note"><b>Lines 86&ndash;98</b> wrap the methods that are not coroutines. <code>add()</code> and
+    <p class="note"><b>Lines 119&ndash;130</b> wrap the methods that are not coroutines. <code>add()</code> and
        <code>expunge()</code> stage work without any await, so they used to be handed back untouched and were the one
        route with no guard on it in any form: a worker thread staged an entity through a captured <code>add</code> and
-       the boundary flushed and committed the row. <b>Line 87</b> asks for a routine and not for anything callable,
+       the boundary flushed and committed the row. <b>Line 119</b> asks for a routine and not for anything callable,
        which is the difference between guarding a session API and breaking one. A <code>@contextmanager</code> object
        is callable, because a context manager doubles as a decorator, so <code>no_autoflush</code> came back wrapped in
        a plain function with no <code>__enter__</code> and <code>with current_session().no_autoflush:</code> was a
        <code>TypeError</code>. Everything the wrapper will not allow says so and names itself; silently changing what a
        call means is the one thing it must never do.</p>
-    <p class="note"><b>Lines 100&ndash;115</b> are why a swallowed database error cannot be committed over. Every await a
+    <p class="note"><b>Lines 132&ndash;143</b> are why a swallowed database error cannot be committed over. Every await a
        DAO makes goes through here, so a <code>DBAPIError</code> or a cancelled statement is recorded as the failure
        that poisoned the context before the caller ever gets the chance to catch it. It has to happen here rather than
        at the commit: SQLAlchemy deactivates its <code>SessionTransaction</code> on a failed <em>flush</em> only, so
        after a failed <code>execute()</code> it still reports <code>is_active</code> true while psycopg reports the
-       connection <code>INERROR</code>, and the COMMIT that follows is a silent no-op. <b>Line 103</b> is the one bit of
-       bookkeeping: it remembers that the session has been used, so the connection check at the end of the boundary
-       costs a method that never touched the database nothing.</p>
-    <p class="note"><b>Lines 147&ndash;148</b> refuse a function that is not <code>async def</code> at import time. The
+       connection <code>INERROR</code>, and the COMMIT that follows is a silent no-op. <b>Line 142</b> is the one bit of
+       bookkeeping: it records the transaction the connection is holding the first time postgres is actually in one,
+       so the checks at the end of the boundary cost a method that never touched the database nothing and have an
+       identity to compare when it did.</p>
+    <p class="note"><b>Lines 178&ndash;179</b> refuse a function that is not <code>async def</code> at import time. The
        wrapper awaits what it wraps, so without this the mistake surfaced at call time as a <code>TypeError</code>
        about the return value rather than at the decorator that is wrong.</p>
-    <p class="note"><b>Line 152</b> is the propagation rule. A context already set means a transaction is open, so the
+    <p class="note"><b>Line 184</b> is the propagation rule. A context already set means a transaction is open, so the
        call joins it and the decorator gets out of the way. This is Spring's <code>REQUIRED</code>.</p>
-    <p class="note"><b>Lines 154&ndash;158</b> are participation semantics. A joined call that fails marks the whole
+    <p class="note"><b>Lines 187&ndash;190</b> are participation semantics. A joined call that fails marks the whole
        transaction rollback-only, so a caller cannot swallow the failure and commit half the work. The catch is
        <code>BaseException</code> because <code>asyncio.CancelledError</code> is not an <code>Exception</code>: a joined
        call killed by <code>asyncio.timeout()</code> has to poison the transaction too, or a swallowed
        <code>TimeoutError</code> commits half a transfer.</p>
-    <p class="note"><b>Line 165</b> is the boundary. <code>session.begin()</code> commits when the method returns and
+    <p class="note"><b>Line 196</b> is the boundary. <code>session.begin()</code> commits when the method returns and
        rolls back when it raises, so business logic is never wrapped in a swallowing <code>except</code>.</p>
-    <p class="note"><b>Lines 168&ndash;173</b> refuse the commit when a joined call already failed, the same way Spring
-       throws <code>UnexpectedRollbackException</code>. Line 169 compares identities so that a failure simply
+    <p class="note"><b>Lines 199&ndash;204</b> refuse the commit when a joined call already failed, the same way Spring
+       throws <code>UnexpectedRollbackException</code>. Line 200 compares identities so that a failure simply
        propagating out of the boundary reaches the caller unchanged instead of being masked, and the exception that
        poisoned the transaction, not whatever the caller tripped over afterwards, becomes the <code>__cause__</code> of
        the rollback.</p>
-    <p class="note"><b>Lines 174&ndash;176</b> are the second net behind lines 100&ndash;115. Committing a transaction
+    <p class="note"><b>Lines 205&ndash;207</b> are the second net behind lines 132&ndash;143. Committing a transaction
        Postgres already killed is a silent no-op, so without a check the boundary would return success for work the
        database threw away. This one catches a transaction that ended some other way than a statement error.</p>
-    <p class="note"><b>Lines 177&ndash;182</b> are the third net, and the only one that asks the connection rather than
+    <p class="note"><b>Lines 208&ndash;213</b> are the third net, and the only one that asks the connection rather than
        the session. The <code>Result</code> that <code>execute()</code> hands back carries the very
        <code>Connection</code> the boundary is holding, and <code>result.connection</code> is not a session name, so no
        block list can reach it. A commit through it split a transfer: the debit committed and the boundary rolled back
@@ -251,11 +258,22 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        <code>in_transaction()</code> is false. Asking only that much was not enough: any session call made after the
        split autobegins a fresh transaction on the same connection, so <code>in_transaction()</code> answered true
        again and the boundary went back to failing at COMMIT with the raw <code>InvalidRequestError</code> this net
-       exists to replace. Line 181 asks for the transaction the boundary started rather than for any transaction at
-       all, and line 110 is where that one was captured, on the first session call that reached the database. A raw
-       <code>ROLLBACK</code> string still gets past all three, because it ends the transaction inside Postgres where
-       neither the session nor the connection is told.</p>
-    <p class="note"><b>Lines 184&ndash;186</b> close the context and restore the previous one in a
+       exists to replace. Line 212 asks for the transaction the boundary started rather than for any transaction at
+       all, and line 85 is where that one was captured, on the first session call that found postgres in a
+       transaction. A raw
+       <code>ROLLBACK</code> string gets past all three of these, because it ends the transaction inside Postgres where
+       neither the session nor the connection is told, which is what the net below answers for.</p>
+    <p class="note"><b>Lines 214&ndash;215</b> are the fourth net, and the only one that asks the driver. Everything
+       above it asks SQLAlchemy, and SQLAlchemy is exactly what a raw <code>COMMIT</code> or <code>ROLLBACK</code>
+       string goes around: the string ends the transaction inside Postgres, the session and the connection are never
+       told, the transaction object is still the one line 85 recorded, and the boundary reported success over work the
+       database had thrown away. libpq was told, because it tracks the transaction status of the socket, so lines
+       72&ndash;86 read it on both sides of every session call and latch the moment it stops being the transaction the
+       boundary opened. That closes the raw string, the same commit made straight on psycopg's connection through
+       <code>result.connection.connection.dbapi_connection</code>, and a transaction Postgres aborted with nothing
+       recording the error. What stays open is a write on a <em>second</em> connection: it commits itself on a socket
+       the boundary never held, so there is nothing here to ask.</p>
+    <p class="note"><b>Lines 217&ndash;219</b> close the context and restore the previous one in a
        <code>finally</code>, so a rolled-back call leaves nothing behind for the next call on the same task.</p>
   </div>
   <div class="card">
@@ -345,6 +363,14 @@ def _check_task(context: "TransactionContext") -> None:
         )
 
 
+def _driver_connection(connection: Any) -> Any:
+    return connection.sync_connection.connection.dbapi_connection
+
+
+def _in_transaction(driver: Any) -> bool:
+    return driver.info.transaction_status == TransactionStatus.INTRANS
+
+
 def _is_context_manager(value: Any) -> bool:
     kind = type(value)
     return hasattr(kind, "__enter__") and hasattr(kind, "__exit__")
@@ -393,11 +419,35 @@ class BoundarySession:
                 "transaction instead of being committed over"
             )
 
+    def _watch(self) -> None:
+        if self._context.driver is not None and not _in_transaction(
+            self._context.driver
+        ):
+            self._context.discarded = True
+
+    async def _record(self) -> None:
+        if self._context.driver is not None:
+            self._watch()
+            return
+        connection = await self._session.connection()
+        driver = _driver_connection(connection)
+        if _in_transaction(driver):
+            self._context.transaction = connection.get_transaction()
+            self._context.driver = driver
+
     async def __aenter__(self) -> "BoundarySession":
         raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
 
     async def __aexit__(self, *unused: Any) -> None:
         raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
+
+    def __contains__(self, instance: Any) -> bool:
+        self._guard()
+        return instance in self._session
+
+    def __iter__(self) -> Any:
+        self._guard()
+        return iter(self._session)
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in THE_WRAPPERS_OWN:
@@ -432,16 +482,14 @@ class BoundarySession:
         @wraps(attribute)
         async def guarded(*args: Any, **kwargs: Any) -> Any:
             self._guard()
-            self._context.connected = True
+            self._watch()
             try:
                 answer = await attribute(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
                 if self._context.failure is None:
                     self._context.failure = error
                 raise
-            if self._context.transaction is None:
-                connection = await self._session.connection()
-                self._context.transaction = connection.get_transaction()
+            await self._record()
             return answer
 
         return guarded
@@ -452,8 +500,9 @@ class TransactionContext:
     task: asyncio.Task[Any] | None
     failure: BaseException | None = None
     closed: bool = False
-    connected: bool = False
     transaction: AsyncTransaction | None = None
+    driver: Any = None
+    discarded: bool = False
     session: BoundarySession = field(init=False)
 
 
@@ -506,12 +555,14 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     transaction = session.get_transaction()
                     if transaction is None or not transaction.is_active:
                         raise UnexpectedRollback(LOST_TRANSACTION)
-                    if context.connected:
+                    if context.driver is not None:
                         connection = await session.connection()
                         if not connection.in_transaction():
                             raise UnexpectedRollback(LOST_CONNECTION)
                         if connection.get_transaction() is not context.transaction:
                             raise UnexpectedRollback(SPLIT_CONNECTION)
+                        if context.discarded or not _in_transaction(context.driver):
+                            raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
                     return result
             finally:
                 context.closed = True

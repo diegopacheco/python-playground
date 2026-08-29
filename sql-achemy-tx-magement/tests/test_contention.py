@@ -1,8 +1,10 @@
 import asyncio
+import random
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from dao import AccountDAO, LedgerDAO
 from service import BankService, InsufficientFunds, LedgerService
@@ -159,3 +161,98 @@ async def test_recording_a_ledger_entry_does_not_deadlock_with_a_transfer(
 
     assert [r for r in results if isinstance(r, BaseException)] == []
     assert await total_balance(bank) == Decimal("2000.00")
+
+
+async def test_money_is_conserved_around_a_cycle_of_accounts(bank: BankService):
+    """Two accounts in opposite directions is the deadlock everybody writes a test for;
+    a cycle of three is the one an ordering rule has to survive as well. alice -> bob,
+    bob -> carol and carol -> alice running together is a lock cycle unless every
+    transfer takes both rows in one statement in ascending id order, and the cost of
+    getting it wrong is not an error but Postgres detecting a deadlock and killing one
+    of them a second later."""
+    accounts = [
+        await bank.open_account(name, Decimal("100.00"))
+        for name in ("alice", "bob", "carol")
+    ]
+    ring = [(accounts[i].id, accounts[(i + 1) % 3].id) for i in range(3)]
+
+    results = await asyncio.gather(
+        *(bank.transfer(source, target, Decimal("40.00")) for source, target in ring * 4),
+        return_exceptions=True,
+    )
+
+    for result in results:
+        assert not isinstance(result, BaseException) or isinstance(
+            result, InsufficientFunds
+        ), result
+    assert await total_balance(bank) == Decimal("300.00")
+
+
+async def test_money_is_conserved_under_a_long_random_walk(bank: BankService):
+    """The contention tests above each pin one shape. This one runs the shapes together
+    for long enough that an ordering or locking mistake has to show up as money rather
+    than as an exception: every refusal has to be InsufficientFunds, because any other
+    failure means a transfer died somewhere between its debit and its credit."""
+    accounts = [
+        await bank.open_account(f"owner{index}", Decimal("100.00")) for index in range(5)
+    ]
+    random.seed(7)
+
+    for _ in range(120):
+        source, target = random.sample(accounts, 2)
+        amount = (Decimal(random.randrange(1, 5000)) / 100).quantize(Decimal("0.01"))
+        try:
+            await bank.transfer(source.id, target.id, amount)
+        except InsufficientFunds:
+            pass
+
+    assert await total_balance(bank) == Decimal("500.00")
+    assert len(await bank.list_ledger()) > 0
+
+
+async def test_concurrent_transfers_across_many_accounts_conserve_money(
+    bank: BankService,
+):
+    """Twenty-four transfers picked at random over six accounts, all in flight at once.
+    The pairs overlap in every direction, so this is the ascending lock order and the
+    row locks under load at the same time, and the ledger has to hold exactly one row
+    per transfer that committed."""
+    accounts = [
+        await bank.open_account(f"owner{index}", Decimal("100.00")) for index in range(6)
+    ]
+    random.seed(11)
+    pairs = [tuple(a.id for a in random.sample(accounts, 2)) for _ in range(24)]
+
+    results = await asyncio.gather(
+        *(bank.transfer(source, target, Decimal("10.00")) for source, target in pairs),
+        return_exceptions=True,
+    )
+
+    for result in results:
+        assert not isinstance(result, BaseException) or isinstance(
+            result, InsufficientFunds
+        ), result
+    assert await total_balance(bank) == Decimal("600.00")
+    assert len(await bank.list_ledger()) == sum(
+        1 for result in results if not isinstance(result, BaseException)
+    )
+
+
+async def test_concurrent_opens_of_one_owner_leave_exactly_one_account(
+    bank: BankService,
+):
+    """owner is unique, so the schema is the thing that decides which of ten concurrent
+    opens wins. The losers have to arrive as IntegrityError off a rolled-back
+    transaction rather than as a half-written row or a session left in a state the next
+    caller inherits."""
+    results = await asyncio.gather(
+        *(bank.open_account("alice", Decimal("10.00")) for _ in range(10)),
+        return_exceptions=True,
+    )
+
+    survived = [result for result in results if not isinstance(result, BaseException)]
+    assert len(survived) == 1
+    for result in results:
+        if isinstance(result, BaseException):
+            assert isinstance(result, IntegrityError), result
+    assert len(await bank.list_accounts()) == 1

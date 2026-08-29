@@ -151,3 +151,119 @@ async def test_an_amount_past_the_decimal_contexts_exponent_limit_is_refused(
         await bank.open_account("carol", past_emax)
 
     assert await total_balance(bank) == Decimal("20.00")
+
+
+async def test_a_zero_amount_is_refused(bank: BankService):
+    """Zero is money the schema can hold and a transfer that means nothing: it writes a
+    ledger row saying an account moved nothing, and it takes both row locks to do it.
+    The check is `<= 0` and not `< 0` for exactly that reason."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+
+    for call in (
+        bank.deposit(source.id, Decimal("0.00")),
+        bank.withdraw(source.id, Decimal("0.00")),
+        bank.transfer(source.id, target.id, Decimal("0.00")),
+        LedgerService().record(source.id, target.id, Decimal("0.00")),
+    ):
+        with pytest.raises(InvalidAmount):
+            await call
+
+    assert await total_balance(bank) == Decimal("100.00")
+    assert await bank.list_ledger() == []
+
+
+async def test_a_negative_amount_is_refused(bank: BankService):
+    """A negative deposit is a withdrawal that skips the funds check, and a negative
+    withdrawal is a deposit that skips the overflow check. Each route would be the other
+    one with its guard removed, so the sign is refused before either can run."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+
+    for call in (
+        bank.deposit(source.id, Decimal("-1.00")),
+        bank.withdraw(source.id, Decimal("-1.00")),
+        bank.transfer(source.id, target.id, Decimal("-1.00")),
+    ):
+        with pytest.raises(InvalidAmount):
+            await call
+
+    assert await total_balance(bank) == Decimal("100.00")
+
+
+async def test_negative_zero_is_not_a_way_past_the_sign_check(bank: BankService):
+    """Decimal keeps the sign of a zero, so -0.00 is a distinct value that is neither
+    greater than zero nor obviously negative. It has to fail the same check, or the one
+    spelling of nothing that reads as signed gets through."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    with pytest.raises(InvalidAmount):
+        await bank.deposit(account.id, Decimal("-0.00"))
+
+    assert await total_balance(bank) == Decimal("100.00")
+
+
+async def test_an_amount_under_the_decimal_contexts_exponent_limit_is_refused(
+    bank: BankService,
+):
+    """The mirror of the Emax case. An exponent far below Emin is finite, is nowhere
+    near too large for the column, and has to be answered by the scale check rather than
+    raise out of quantize(). It is money finer than a cent by an enormous margin, so the
+    answer is a refusal and not an Underflow nobody handles."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    with pytest.raises(InvalidAmount):
+        await bank.deposit(account.id, Decimal("1E-999999999"))
+
+    assert await total_balance(bank) == Decimal("100.00")
+
+
+async def test_a_transfer_that_would_overflow_the_target_moves_nothing(
+    bank: BankService,
+):
+    """Both legs fit the column on their own and the sum does not, and the credit is the
+    last thing a transfer does. Without the balance check the debit would already be
+    flushed when Postgres refused the credit, so the transfer has to fail as a refused
+    amount rather than as a DataError with half the money in flight."""
+    big = Decimal("9999999999999999.00")
+    source = await bank.open_account("alice", big)
+    target = await bank.open_account("bob", big)
+
+    with pytest.raises(InvalidAmount):
+        await bank.transfer(source.id, target.id, Decimal("1.00"))
+
+    assert (await bank.get_account(source.id)).balance == big
+    assert (await bank.get_account(target.id)).balance == big
+    assert await bank.list_ledger() == []
+
+
+async def test_a_transfer_of_the_whole_balance_leaves_the_account_at_zero(
+    bank: BankService,
+):
+    """The boundary between a transfer that commits and one that raises
+    InsufficientFunds is `balance < amount`, so the exact balance has to be the last
+    amount that works. CHECK (balance >= 0) has to agree, because zero is the value it
+    is written to allow."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+
+    await bank.transfer(source.id, target.id, Decimal("100.00"))
+
+    assert (await bank.get_account(source.id)).balance == Decimal("0.00")
+    assert (await bank.get_account(target.id)).balance == Decimal("100.00")
+    assert await total_balance(bank) == Decimal("100.00")
+
+
+async def test_the_largest_amount_the_column_can_hold_is_accepted(bank: BankService):
+    """The size check is `>=`, so the refusal starts one cent above what Numeric(18, 2)
+    holds and the largest value that fits has to go in and come back unchanged. A check
+    written with `>` instead would refuse a legal balance, and one written against the
+    wrong power of ten would let Postgres refuse it as a DataError instead."""
+    largest = Decimal("9999999999999999.99")
+
+    account = await bank.open_account("alice", largest)
+
+    assert (await bank.get_account(account.id)).balance == largest
+    with pytest.raises(InvalidAmount):
+        await bank.deposit(account.id, Decimal("0.01"))
+    assert (await bank.get_account(account.id)).balance == largest

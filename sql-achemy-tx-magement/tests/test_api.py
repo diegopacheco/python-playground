@@ -6,14 +6,17 @@ from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import controller
+import service as service_module
 import tx
 from controller import app
+from dao import AccountDAO
 from db import DATABASE_URL, TIMEOUTS
 from service import BankService, InsufficientFunds
-from tx import transactional
+from tx import current_session, transactional
 
 
 @pytest.fixture
@@ -276,6 +279,26 @@ async def test_the_readme_shows_the_decorator_that_ships():
         assert block in source.read_text(), block.splitlines()[0]
 
 
+async def test_the_readme_lists_the_tests_that_run():
+    """The README sells a number and prints the names, and both had drifted: it claimed
+    96 while the suite ran 104, and the list was missing nine of them. A count nobody
+    checks is the same drift the pinned code blocks exist to stop, one file over. The
+    names come from the files rather than from what this run collected, so the check
+    means the same thing under -k as it does under a full run."""
+    root = Path(inspect.getsourcefile(tx)).parent.parent
+    readme = (root / "README.md").read_text()
+    defined = sorted(
+        f"tests/{path.name}::{name}"
+        for path in (root / "tests").glob("test_*.py")
+        for name in re.findall(r"^async def (test_\w+)", path.read_text(), re.M)
+    )
+    listed = sorted(re.findall(r"^(tests/\S+::\S+) PASSED$", readme, re.M))
+
+    assert listed == defined
+    assert f"\n{len(defined)} passed" in readme
+    assert f"# {len(defined)} tests against a real postgres" in readme
+
+
 async def test_an_amount_past_the_decimal_contexts_limit_is_a_bad_request(
     client: httpx.AsyncClient,
 ):
@@ -311,3 +334,198 @@ async def test_an_amount_past_the_decimal_contexts_limit_is_a_bad_request(
         assert response.json()["error"] == "amount is too large to store"
 
     assert (await client.get(f"/api/accounts/{source['id']}")).json()["balance"] == "100.00"
+
+
+async def test_every_connection_carries_the_timeouts_the_app_configures(
+    bank: BankService,
+):
+    """The two timeouts arrive as libpq options on the connection string, which is the
+    kind of setting that is either applied to every connection or silently to none. The
+    tests below shorten them to run in milliseconds instead of seconds, so this is what
+    says the shipped numbers are really on the socket."""
+
+    @transactional
+    async def ask_postgres() -> tuple[str, str]:
+        session = current_session()
+        lock = await session.execute(text("show lock_timeout"))
+        statement = await session.execute(text("show statement_timeout"))
+        return lock.scalar_one(), statement.scalar_one()
+
+    assert await ask_postgres() == ("5s", "15s")
+
+
+async def test_a_wait_longer_than_lock_timeout_is_unavailable_not_a_crash(
+    client: httpx.AsyncClient, bank: BankService, monkeypatch: pytest.MonkeyPatch
+):
+    """The pool timeout above has a test because it needed a handler of its own. The
+    lock timeout is the one the README leads with, and it had none: a hot account held
+    by a stalled transaction is the case lock_timeout exists for, and the caller has to
+    see a 503 rather than a hang or the OperationalError as an opaque 500. The wait is
+    shortened to a fifth of a second here so the suite does not spend the shipped five
+    on it; the test above is what pins the shipped number."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+    impatient = create_async_engine(
+        DATABASE_URL, connect_args={"options": "-c lock_timeout=200"}
+    )
+    monkeypatch.setattr(tx, "session_factory", async_sessionmaker(impatient))
+    holding, release = asyncio.Event(), asyncio.Event()
+
+    @transactional
+    async def hold_the_row() -> None:
+        await AccountDAO().find_for_update(account.id)
+        holding.set()
+        await release.wait()
+
+    holder = asyncio.create_task(hold_the_row())
+    await holding.wait()
+    try:
+        response = await client.post(
+            f"/api/accounts/{account.id}/deposit", json={"amount": "1.00"}
+        )
+    finally:
+        release.set()
+        await holder
+        await impatient.dispose()
+
+    assert response.status_code == 503, response.text
+
+
+async def test_a_statement_past_its_timeout_is_unavailable_not_a_crash(
+    client: httpx.AsyncClient, bank: BankService, monkeypatch: pytest.MonkeyPatch
+):
+    """The third of the three bounded waits. statement_timeout kills a query Postgres is
+    still running, which arrives as an OperationalError like the lock timeout does, and
+    the README promises all three answer 503 rather than leaving the request hanging.
+    SET LOCAL shortens it inside the boundary so the wait is milliseconds rather than
+    the shipped fifteen seconds."""
+
+    @transactional
+    async def sleep_past_the_timeout(account_id: int, amount: Decimal):
+        session = current_session()
+        await session.execute(text("set local statement_timeout = 200"))
+        await session.execute(text("select pg_sleep(5)"))
+
+    monkeypatch.setattr(controller.service, "deposit", sleep_past_the_timeout)
+
+    response = await client.post("/api/accounts/1/deposit", json={"amount": "1.00"})
+
+    assert response.status_code == 503, response.text
+
+
+async def test_an_amount_that_is_not_a_positive_number_is_a_bad_request(
+    client: httpx.AsyncClient, bank: BankService
+):
+    """Zero and a negative amount are values the schema holds happily, so the request
+    model has no reason to refuse them and the service is the layer that can. A negative
+    deposit is a withdrawal with no funds check behind it, which is the one that would
+    matter."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    for path in ("deposit", "withdraw"):
+        for amount in ("0.00", "-1.00"):
+            response = await client.post(
+                f"/api/accounts/{account.id}/{path}", json={"amount": amount}
+            )
+            assert response.status_code == 400, (path, amount, response.text)
+
+    assert (await client.get(f"/api/accounts/{account.id}")).json()["balance"] == "100.00"
+
+
+async def test_a_value_the_schema_cannot_hold_is_a_bad_request_not_a_crash(
+    client: httpx.AsyncClient, bank: BankService, monkeypatch: pytest.MonkeyPatch
+):
+    """The DataError handler is there for the bug that gets past the service, and a
+    handler nothing exercises is a handler nobody knows is wired up. A service that
+    stopped checking the column's range is exactly that bug, and the answer has to stay
+    a 400 naming the range rather than an opaque 500."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+    monkeypatch.setattr(service_module, "MAX_MONEY", Decimal("1E+30"))
+
+    response = await client.post(
+        f"/api/accounts/{account.id}/deposit", json={"amount": "1E+20"}
+    )
+
+    assert response.status_code == 400
+    assert "out of range" in response.json()["error"]
+    assert (await client.get(f"/api/accounts/{account.id}")).json()["balance"] == "100.00"
+
+
+async def test_the_ui_only_calls_routes_the_api_really_has(client: httpx.AsyncClient):
+    """The page is served by the same app it calls, so a route renamed on one side and
+    not the other is a 404 nobody sees until they click. Every path the page builds is
+    checked against the routing table rather than against the README."""
+    page = (await client.get("/")).text
+    paths = set(re.findall(r"call\('(\w+)', '(/api/[^']*)'", page))
+    operations = set(re.findall(r'<button class="go" value="(\w+)"', page))
+    paths |= {("POST", f"/api/accounts/{{}}/{operation}") for operation in operations}
+    known = {
+        (method, re.sub(r"\{[^}]+\}", "{}", route.path))
+        for route in app.routes
+        for method in getattr(route, "methods", ())
+    }
+
+    assert operations
+    assert {(method, path.rstrip("/")) for method, path in paths} <= known
+
+
+async def test_the_readme_documents_every_route_the_api_has():
+    """The API table is the contract a reader works from, so a route added without a row
+    is undocumented and a row without a route is a lie. Both directions are checked,
+    because the drift that already happened here went the way nobody looks."""
+    source = Path(inspect.getsourcefile(tx))
+    readme = (source.parent.parent / "README.md").read_text()
+    documented = {
+        (method, path)
+        for method, path in re.findall(r"^\| `(\w+)` \| `(/[^`]*)`", readme, re.M)
+    }
+    served = {
+        (method, re.sub(r"\{[^}]+\}", "{id}", route.path))
+        for route in app.routes
+        for method in getattr(route, "methods", ())
+        if route.path.startswith("/api") or route.path == "/"
+    } - {("HEAD", "/"), ("HEAD", "/api/accounts")}
+
+    assert documented == served
+
+
+async def test_the_ui_code_blocks_show_the_service_and_dao_that_ship(
+    client: httpx.AsyncClient,
+):
+    """The decorator on the page is pinned to tx.py, and the other two cards were not.
+    They quote transfer(), find_all_for_update() and the constraints that make the lock
+    order work, which is the same drift risk one file over: a page annotating a lock
+    order nobody takes reads exactly like a page annotating one somebody does. The
+    signature is reflowed to fit the card, so the comparison ignores whitespace and
+    every other token has to be a token that ships."""
+    page = (await client.get("/")).text
+    root = Path(inspect.getsourcefile(tx)).parent
+    models = (root / "models.py").read_text()
+    blocks = {
+        "SERVICE_CODE": root / "service.py",
+        "LOCK_CODE": root / "dao.py",
+    }
+
+    for name, path in blocks.items():
+        quoted = re.search(rf"const {name} = `(.*?)`;", page, re.S).group(1)
+        sources = "".join((path.read_text() + models).split())
+        for line in quoted.splitlines():
+            if not line.strip() or line.strip().startswith("#"):
+                continue
+            assert "".join(line.split()) in sources, (name, line.strip())
+
+
+async def test_the_ui_only_touches_elements_the_page_declares(
+    client: httpx.AsyncClient,
+):
+    """The page is one file, so its script and its markup drift together or not at all,
+    and a renamed id is a button that silently stops working rather than an error
+    anybody sees. Every element the script reaches for has to be one the page declares,
+    and every code block it fills has to have somewhere to go."""
+    page = (await client.get("/")).text
+    declared = set(re.findall(r'\bid="([^"]+)"', page))
+    reached = set(re.findall(r"getElementById\('([^']+)'\)", page))
+    filled = set(re.findall(r"renderCode\('([^']+)'", page))
+
+    assert reached
+    assert filled
+    assert (reached | filled) <= declared

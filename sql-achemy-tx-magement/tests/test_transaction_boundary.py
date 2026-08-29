@@ -1,13 +1,21 @@
 import asyncio
+import inspect
 from decimal import Decimal
 from typing import Any
 from weakref import ReferenceType
 
 import pytest
 from sqlalchemy import Connection, Engine, select, text
-from sqlalchemy.exc import IntegrityError, InvalidRequestError, ProgrammingError
+from sqlalchemy.engine import Transaction
+from sqlalchemy.exc import (
+    DBAPIError,
+    IntegrityError,
+    InvalidRequestError,
+    OperationalError,
+    ProgrammingError,
+)
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, SessionTransaction
 from sqlalchemy.util import greenlet_spawn
 
 from dao import AccountDAO, LedgerDAO
@@ -24,6 +32,7 @@ from service import (
     _lock_accounts,
 )
 from tx import (
+    BoundarySession,
     CrossTaskTransaction,
     NoActiveTransaction,
     TransactionNotYours,
@@ -1012,7 +1021,9 @@ async def test_no_name_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
     because it is an instance attribute that never shows up in dir(AsyncSession). This
     walks every name the session actually has and fails on any that still hands back an
     engine or the sync Session, including through the weakrefs and dicts that
-    _proxy_objects hid one behind."""
+    _proxy_objects hid one behind. The connection under the session and the transaction
+    object on it are escapes of the same kind - a commit through either one splits the
+    boundary - so the sweep fails on those too."""
 
     def targets(value: Any) -> list[Any]:
         if isinstance(value, dict):
@@ -1037,7 +1048,16 @@ async def test_no_name_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
     @transactional
     async def sweep() -> list[str]:
         wrapper = current_session()
-        escapes = (Engine, AsyncEngine, Session, AsyncSession)
+        escapes = (
+            Engine,
+            AsyncEngine,
+            Session,
+            AsyncSession,
+            Connection,
+            AsyncConnection,
+            Transaction,
+            SessionTransaction,
+        )
         leaked = []
         for name in dir(wrapper._session):
             if name.startswith("__"):
@@ -1201,13 +1221,14 @@ async def test_a_rollback_through_the_result_object_is_not_a_commit(bank: BankSe
     assert await bank.list_accounts() == []
 
 
-async def test_a_raw_rollback_string_is_past_every_net(bank: BankService):
-    """The limit that stays. A ROLLBACK string ends the transaction inside Postgres,
-    where neither SQLAlchemy's SessionTransaction nor the connection is told: is_active
-    stays true and in_transaction() stays true, so all three nets pass and the boundary
-    reports success for work the database threw away. Nothing in Python can stop code
-    that means to do this, and a suite that only shows what is caught would leave the
-    reader thinking the guarantee is absolute."""
+async def test_a_raw_rollback_string_is_caught_by_the_driver(bank: BankService):
+    """This one used to get away. A ROLLBACK string ends the transaction inside
+    Postgres, where neither SQLAlchemy's SessionTransaction nor its Connection is told:
+    is_active stays true, in_transaction() stays true, the transaction object is still
+    the one the boundary recorded, and all three of those nets pass over work the
+    database threw away. psycopg was told, because libpq tracks the transaction status
+    of the socket, so the fourth net asks the driver instead of asking SQLAlchemy about
+    the driver."""
 
     @transactional
     async def caller() -> str:
@@ -1215,8 +1236,79 @@ async def test_a_raw_rollback_string_is_past_every_net(bank: BankService):
         await current_session().execute(text("rollback"))
         return "the work is done"
 
-    assert await caller() == "the work is done"
+    with pytest.raises(UnexpectedRollback) as refused:
+        await caller()
+
+    assert "postgres is no longer in the transaction" in str(refused.value)
     assert await bank.list_accounts() == []
+
+
+async def test_a_raw_commit_string_is_caught_by_the_driver(bank: BankService):
+    """The same route in the direction that keeps the first half instead of losing it,
+    and the one three nets were blindest to: after a COMMIT string psycopg opens a
+    fresh transaction for the next statement, so the boundary went on writing and
+    committed the second half over a first half it no longer owned."""
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        await current_session().execute(text("commit"))
+        await AccountDAO().insert("dave", Decimal("888.00"))
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await caller()
+
+    assert [account.owner for account in await bank.list_accounts()] == ["carol"]
+
+
+async def test_a_commit_through_the_driver_under_the_result_is_not_a_commit(
+    bank: BankService,
+):
+    """The result object carries the Connection, the Connection carries the pooled
+    connection and that carries psycopg's own. A commit made down there is invisible to
+    every SQLAlchemy object above it - the transaction the boundary recorded is still
+    the transaction the Connection reports - which is the same blindness the raw string
+    exploits and the same net that answers for it."""
+
+    @transactional
+    async def split_under_the_boundary() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        result = await current_session().execute(text("select 1"))
+        await greenlet_spawn(result.connection.connection.dbapi_connection.commit)
+        await AccountDAO().insert("dave", Decimal("888.00"))
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await split_under_the_boundary()
+
+    assert [account.owner for account in await bank.list_accounts()] == ["carol"]
+
+
+async def test_a_write_on_a_second_connection_is_the_limit_that_stays(
+    bank: BankService,
+):
+    """The engine behind the result is a way out of the boundary rather than a way to
+    end it. A second connection opened from it commits itself, on a socket the boundary
+    never held, so no net here can see it: the transaction the boundary owns is intact
+    and postgres says so. A suite that only showed what is caught would leave the
+    reader thinking the guarantee is absolute."""
+
+    @transactional
+    async def write_beside_the_boundary() -> str:
+        result = await current_session().execute(text("select 1"))
+        beside = AsyncEngine(result.connection.engine)
+        async with beside.begin() as connection:
+            await connection.execute(
+                text("insert into accounts (owner, balance) values ('mallory', 1.00)")
+            )
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        raise InsufficientFunds("everything the boundary owns is rolled back")
+
+    with pytest.raises(InsufficientFunds):
+        await write_beside_the_boundary()
+
+    assert [account.owner for account in await bank.list_accounts()] == ["mallory"]
 
 
 async def test_a_boundary_that_touches_nothing_never_asks_for_a_connection(
@@ -1375,3 +1467,343 @@ async def test_a_task_still_cannot_borrow_a_boundary_that_is_open(bank: BankServ
 
     with pytest.raises(CrossTaskTransaction):
         await spawn_while_open()
+
+
+async def test_a_session_call_that_never_reached_the_database_is_not_a_split(
+    bank: BankService,
+):
+    """The connection net compared the transaction it recorded against the one the
+    connection holds, and it recorded that identity only after a session call came
+    back. A call that raises something the session does not treat as poison - a plain
+    string handed to execute() never leaves the process - left the flag saying the
+    boundary had reached the database and the identity saying it had not, so the net
+    read a live transaction against None and called a boundary that split nothing
+    UnexpectedRollback. The flag and the identity are one fact, so the net asks the
+    identity."""
+
+    @transactional
+    async def swallow_a_failure_that_never_reached_postgres() -> int:
+        session = current_session()
+        with pytest.raises(Exception) as refused:
+            await session.execute("select 1")
+        assert not isinstance(refused.value, DBAPIError)
+        return (await AccountDAO().insert("alice", Decimal("10.00"))).id
+
+    account_id = await swallow_a_failure_that_never_reached_postgres()
+
+    assert (await bank.get_account(account_id)).owner == "alice"
+
+
+async def test_a_boundary_whose_only_session_call_failed_still_commits(
+    bank: BankService,
+):
+    """The same hole with nothing after it to hide it. The boundary wrote through no
+    session call at all, so there is no result object to reach the connection through
+    and nothing that could have split anything; it has to return."""
+
+    @transactional
+    async def only_a_failed_call() -> str:
+        with pytest.raises(Exception):
+            await current_session().execute("select 1")
+        return "nothing was written"
+
+    assert await only_a_failed_call() == "nothing was written"
+
+
+async def test_membership_and_iteration_reach_the_session(bank: BankService):
+    """A special method is looked up on the type, not through __getattr__, so the two
+    the session defines were not passing through the wrapper at all: `entity in
+    session` and `list(session)` were a TypeError naming BoundarySession. That is the
+    wrapper silently breaking a session API rather than passing it through or refusing
+    it by name, which is the one thing this design is not allowed to do."""
+
+    @transactional
+    async def ask_the_session() -> tuple[bool, int]:
+        session = current_session()
+        account = await AccountDAO().insert("alice", Decimal("10.00"))
+        return account in session, len(list(session))
+
+    assert await ask_the_session() == (True, 1)
+
+
+async def test_every_special_method_the_session_defines_is_on_the_wrapper(
+    bank: BankService,
+):
+    """The block-list audit walks names, and a special method is the one thing a name
+    audit cannot see: Python resolves it on the type and never calls __getattr__. So
+    the wrapper has to define every one the session does, or the API it exists to pass
+    through breaks by accident. This is that audit, and it is what fails when
+    SQLAlchemy adds the next one."""
+    defined = {
+        name
+        for name in dir(AsyncSession)
+        if name.startswith("__")
+        and name not in dir(object)
+        and inspect.isfunction(getattr(AsyncSession, name, None))
+    }
+    missing = {name for name in defined if name not in vars(BoundarySession)}
+
+    assert missing == set(), missing
+
+
+async def test_a_captured_session_refuses_membership_from_a_spawned_task(
+    bank: BankService,
+):
+    """The special methods run the same guard every other route does, or they are the
+    way around it."""
+    captured: dict[str, Any] = {}
+
+    @transactional
+    async def capture_then_spawn() -> None:
+        captured["session"] = current_session()
+
+        async def child() -> None:
+            assert object() in captured["session"]
+
+        await asyncio.create_task(child())
+
+    with pytest.raises(CrossTaskTransaction):
+        await capture_then_spawn()
+
+
+async def test_a_boundary_that_only_stages_work_still_commits(bank: BankService):
+    """add() stages an entity without an await, so the session wrapper never runs the
+    recorder and the boundary reaches its end having never asked the driver anything.
+    The connection checks have to stay out of the way there: the only statement is the
+    INSERT that session.begin() flushes on the way out, and nothing could have split a
+    transaction that had not been opened yet when the method returned."""
+
+    @transactional
+    async def stage_only() -> None:
+        current_session().add(Account(owner="staged", balance=Decimal("5.00")))
+
+    await stage_only()
+
+    assert [account.owner for account in await bank.list_accounts()] == ["staged"]
+
+
+async def test_a_session_call_that_sends_no_sql_is_not_a_split(bank: BankService):
+    """The driver net latches on the transaction status of the socket, and a flush with
+    nothing pending is a session call that comes back without a statement ever leaving
+    the process. Postgres is idle, which is not the same as postgres having discarded
+    anything, so the net must not fire and the boundary must return."""
+
+    @transactional
+    async def flush_nothing() -> str:
+        await current_session().flush()
+        await current_session().flush()
+        return "nothing was pending"
+
+    assert await flush_nothing() == "nothing was pending"
+
+
+async def test_statements_that_keep_the_transaction_open_are_not_splits(
+    bank: BankService,
+):
+    """The driver net answers a question about the socket, so anything that touches the
+    transaction without ending it has to leave it alone. SET LOCAL, a redundant BEGIN
+    that Postgres answers with a warning, and a savepoint taken and released by hand all
+    keep the connection INTRANS, and a net that fired on any of them would refuse
+    boundaries that committed correctly."""
+
+    @transactional
+    async def keep_it_open() -> str:
+        session = current_session()
+        await session.execute(text("set local statement_timeout = 30000"))
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        await session.execute(text("begin"))
+        await session.execute(text("savepoint held"))
+        await AccountDAO().insert("bob", Decimal("2.00"))
+        await session.execute(text("release savepoint held"))
+        return "still one transaction"
+
+    assert await keep_it_open() == "still one transaction"
+    assert len(await bank.list_accounts()) == 2
+
+
+async def test_a_swallowed_argument_error_after_real_work_still_commits(
+    bank: BankService,
+):
+    """The other side of the recorder. A session call that fails without reaching
+    Postgres is not poison, so a boundary that swallows one and has already written must
+    still commit the write. Refusing here would be the same false alarm as refusing a
+    boundary whose only call failed, one successful statement later."""
+
+    @transactional
+    async def swallow_after_work() -> str:
+        await AccountDAO().insert("alice", Decimal("10.00"))
+        with pytest.raises(Exception) as refused:
+            await current_session().execute("select 1")
+        assert not isinstance(refused.value, DBAPIError)
+        return "the write stands"
+
+    assert await swallow_after_work() == "the write stands"
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_a_closed_connection_under_the_boundary_is_named(bank: BankService):
+    """Closing the Connection a result object carries is the crudest way out of the
+    boundary, and the one that leaves SQLAlchemy with nothing coherent to say at COMMIT.
+    The connection net catches it as a transaction that ended rather than as whatever
+    state error the commit would have produced."""
+
+    @transactional
+    async def close_it() -> str:
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        result = await current_session().execute(text("select 1"))
+        await greenlet_spawn(result.connection.close)
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback) as refused:
+        await close_it()
+
+    assert "ended on the connection" in str(refused.value)
+    assert await bank.list_accounts() == []
+
+
+async def test_a_poisoned_boundary_gives_its_connection_back(bank: BankService):
+    """A boundary that raises UnexpectedRollback raises it from inside
+    session.begin(), which still has to roll back and still has to hand the connection
+    to the pool. A leak here is invisible until the pool is empty and every request is a
+    503, which is the failure mode the timeouts exist to avoid rather than to cause."""
+    await engine.dispose()
+
+    @transactional
+    async def poisoned() -> str:
+        with pytest.raises(DBAPIError):
+            await current_session().execute(text("select 1/0"))
+        return "swallowed"
+
+    for _ in range(20):
+        with pytest.raises(UnexpectedRollback):
+            await poisoned()
+
+    assert engine.pool.checkedout() == 0
+
+
+async def test_a_cancelled_boundary_gives_its_connection_back(bank: BankService):
+    """The same promise for the path that does not raise its way out cleanly. A timeout
+    around the boundary cancels it mid-statement, and the connection it was holding has
+    to come back rather than stay checked out with a statement still running on it."""
+    await engine.dispose()
+
+    @transactional
+    async def slow() -> None:
+        await current_session().execute(text("select pg_sleep(5)"))
+
+    for _ in range(8):
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.05):
+                await slow()
+
+    assert engine.pool.checkedout() == 0
+
+
+async def test_a_refused_task_does_not_poison_the_boundary_that_spawned_it(
+    bank: BankService,
+):
+    """CrossTaskTransaction is raised by the lookup, before the joined-call bookkeeping
+    the decorator does, so a caller that spawns a task, is refused and catches the
+    refusal has had nothing written on its behalf and nothing to roll back. Poisoning
+    there would turn a refusal that protected the transaction into a reason to throw it
+    away."""
+
+    @transactional
+    async def spawn_and_swallow() -> str:
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        session = current_session()
+
+        async def child() -> None:
+            session.add(Account(owner="ghost", balance=Decimal("0.00")))
+
+        with pytest.raises(CrossTaskTransaction):
+            await asyncio.create_task(child())
+        return "the caller's own work stands"
+
+    assert await spawn_and_swallow() == "the caller's own work stands"
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_the_decorator_applied_twice_is_still_one_transaction(bank: BankService):
+    """A wrapper is a coroutine function, so decorating one is legal and the outer call
+    joins the inner one by the same rule everything else does. It is a mistake rather
+    than a feature, but the propagation rule has to make it harmless instead of opening
+    a second transaction nothing would ever commit."""
+    sessions = []
+
+    @transactional
+    @transactional
+    async def twice() -> None:
+        sessions.append(current_session()._session)
+        await AccountDAO().insert("alice", Decimal("1.00"))
+
+    await twice()
+
+    assert len(sessions) == 1
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_transactional_refuses_an_async_generator():
+    """An `async def` with a yield in it is an async generator function, not a coroutine
+    function, and it is the shape that looks async and is not. Awaiting one gives an
+    async_generator object rather than a result, so the boundary would open, commit
+    nothing and hand the caller a generator to consume after the session had closed."""
+    with pytest.raises(TypeError):
+
+        @transactional
+        async def streams():
+            yield 1
+
+
+async def test_a_terminated_backend_is_not_reported_as_a_commit(bank: BankService):
+    """The connection can also be taken away rather than misused. Postgres killing the
+    backend discards the transaction with nothing on this side raising until the next
+    time the boundary touches it, and the boundary has to end as a database error the
+    caller can be told about rather than as a commit of work that no longer exists."""
+
+    @transactional
+    async def killed_mid_boundary() -> str:
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        result = await current_session().execute(text("select pg_backend_pid()"))
+        backend = result.scalar_one()
+        other = result.connection.engine
+
+        def terminate() -> None:
+            with other.connect() as connection:
+                connection.exec_driver_sql(
+                    f"select pg_terminate_backend({backend})"
+                )
+
+        await greenlet_spawn(terminate)
+        return "the work is done"
+
+    with pytest.raises(OperationalError):
+        await killed_mid_boundary()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_savepoint_recovery_by_hand_is_still_a_rollback(bank: BankService):
+    """The sharpest consequence of treating every DBAPIError as poison, and an honest
+    limit rather than a bug. Postgres can recover an aborted transaction through a
+    savepoint, so this boundary really is committable by the time it returns - and the
+    boundary refuses it anyway, because the recorder saw the error and nothing tells it
+    a savepoint undid the damage. NESTED propagation is what would make this work, and
+    it is not implemented; erring the other way would mean reporting success for the
+    boundaries that did not recover."""
+
+    @transactional
+    async def recover_by_hand() -> str:
+        session = current_session()
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        await session.execute(text("savepoint s"))
+        with pytest.raises(DBAPIError):
+            await session.execute(text("select 1/0"))
+        await session.execute(text("rollback to savepoint s"))
+        return "postgres would have committed this"
+
+    with pytest.raises(UnexpectedRollback) as refused:
+        await recover_by_hand()
+
+    assert isinstance(refused.value.__cause__, DBAPIError)
+    assert await bank.list_accounts() == []
