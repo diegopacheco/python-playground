@@ -1,0 +1,43 @@
+sql-achemy-tx-magement/tests/test_api.py
+  s_d2e5158cd0d414::t_37af7610ef7018 1,6,8,10,12,121-158
+sql-achemy-tx-magement/src/controller.py
+  s_d2e5158cd0d414::t_0c8622530f0c8c 115,121-124
+  s_d2e5158cd0d414::t_90bf725232ebd7 10-15
+sql-achemy-tx-magement/src/tx.py
+  s_d2e5158cd0d414::t_9fc4a50eb125bc 16,62-66
+  s_d2e5158cd0d414::t_48b6b40e1ca47b 67
+sql-achemy-tx-magement/src/service.py
+  s_d2e5158cd0d414::t_0c8622530f0c8c 61-66,95,151
+sql-achemy-tx-magement/tests/test_transaction_boundary.py
+  s_d2e5158cd0d414::t_1f2ad5f2649df2 442-510
+sql-achemy-tx-magement/src/index.html
+  s_d2e5158cd0d414::t_732b42d778d244 140-151,157,162,164,169,171-172,176-177,180,186-187
+  s_d2e5158cd0d414::t_98ceed1a75e01c 268-273,344
+sql-achemy-tx-magement/tests/test_money.py
+  s_d2e5158cd0d414::t_1f2ad5f2649df2 5,115-125
+  s_d2e5158cd0d414::t_b5bda4cc442ee8 126-127
+sql-achemy-tx-magement/README.md
+  s_d2e5158cd0d414::t_36257329802d62 56-57,237-238,352,354-355,360-363
+  s_d2e5158cd0d414::t_2779090ce16b40 51-52,58-60,127-129
+  s_d2e5158cd0d414::t_439c6d09547e87 452,469,497-499
+  s_d2e5158cd0d414::t_2600dcaa04e532 426,501
+  s_d2e5158cd0d414::t_bf050304b9181f 47-50,53,55,78-79,86,125-126
+  s_d2e5158cd0d414::t_87c64ee2f048be 213-216
+  s_d2e5158cd0d414::t_0798f2e395d1aa 261-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "2a6208e73f988d24d40d27e9d068dc176c2f0c75",
+  "prompts": {},
+  "sessions": {
+    "s_d2e5158cd0d414": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a0f8ceeb-c9c9-4651-9bdb-8f35fe1d7830",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
