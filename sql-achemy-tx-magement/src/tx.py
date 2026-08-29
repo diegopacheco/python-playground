@@ -38,8 +38,15 @@ NOT_YOURS_TO_HOLD = (
     "a context manager the session hands out yields the sync Session and carries it in "
     "the frame too; entering and exiting cross the boundary and nothing else does"
 )
+NOT_THE_SESSIONS = (
+    "the wrapper keeps the session and the transaction under this one name, and the "
+    "session it stands in for has no such name; a wrapper is not allowed to be a wider "
+    "door than the thing it wraps"
+)
+NOT_A_WRAPPER = "this is not a session @transactional handed out"
+HELD = "_held"
 UNGUARDABLE = frozenset({"stream", "stream_scalars"})
-THE_WRAPPERS_OWN = frozenset({"_session", "_context"})
+THE_WRAPPERS_OWN = frozenset({HELD, "__dict__"})
 OWNED_BY_THE_BOUNDARY = frozenset(
     {
         "commit",
@@ -115,20 +122,55 @@ def _is_context_manager(value: Any) -> bool:
     return hasattr(kind, "__enter__") and hasattr(kind, "__exit__")
 
 
+def _held_by(wrapper: Any) -> Any:
+    try:
+        return object.__getattribute__(wrapper, HELD)
+    except AttributeError:
+        raise TransactionNotYours(NOT_A_WRAPPER) from None
+
+
+def _hide(name: str) -> None:
+    if name in THE_WRAPPERS_OWN:
+        raise TransactionNotYours(f"{name} is not yours to reach, {NOT_THE_SESSIONS}")
+
+
+def _refuse_state() -> NoReturn:
+    raise TransactionNotYours(f"__getstate__ is not yours to reach, {NOT_THE_SESSIONS}")
+
+
+def _named(wrapper: Any, attribute: Any) -> Any:
+    for name in ("__module__", "__name__", "__qualname__", "__doc__"):
+        try:
+            setattr(wrapper, name, getattr(attribute, name))
+        except AttributeError:
+            pass
+    return wrapper
+
+
 class BoundaryContext:
     def __init__(self, manager: Any, boundary: "BoundarySession") -> None:
-        self.__manager = manager
-        self.__boundary = boundary
+        object.__setattr__(self, HELD, (manager, boundary))
+
+    def __getattribute__(self, name: str) -> Any:
+        _hide(name)
+        return object.__getattribute__(self, name)
+
+    def __dir__(self) -> list[str]:
+        return dir(_held_by(self)[0])
+
+    def __getstate__(self) -> NoReturn:
+        _refuse_state()
 
     def __enter__(self) -> Any:
-        self.__boundary._guard()
-        entered = self.__manager.__enter__()
+        manager, boundary = _held_by(self)
+        boundary._guard()
+        entered = manager.__enter__()
         if isinstance(entered, (Session, AsyncSession)):
-            return self.__boundary
+            return boundary
         return entered
 
     def __exit__(self, *unused: Any) -> Any:
-        return self.__manager.__exit__(*unused)
+        return _held_by(self)[0].__exit__(*unused)
 
     def __getattr__(self, name: str) -> Any:
         raise TransactionNotYours(f"{name} is not yours to reach, {NOT_YOURS_TO_HOLD}")
@@ -136,17 +178,28 @@ class BoundaryContext:
 
 class BoundarySession:
     def __init__(self, session: AsyncSession, context: "TransactionContext") -> None:
-        self._session = session
-        self._context = context
+        object.__setattr__(self, HELD, (session, context))
+
+    def __getattribute__(self, name: str) -> Any:
+        _hide(name)
+        return object.__getattribute__(self, name)
+
+    def __dir__(self) -> list[str]:
+        return dir(_held_by(self)[0])
+
+    def __getstate__(self) -> NoReturn:
+        _refuse_state()
 
     def _guard(self) -> None:
-        if self._context.closed:
+        context = _held_by(self)[1]
+        if context.closed:
             raise NoActiveTransaction(
                 "the transaction this session belonged to has already ended"
             )
-        _check_task(self._context)
+        _check_task(context)
 
     def _refuse(self, name: str) -> None:
+        _hide(name)
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name} belongs to @transactional, not to the code inside it"
@@ -159,10 +212,10 @@ class BoundarySession:
             )
 
     async def _open(self) -> None:
-        context = self._context
+        session, context = _held_by(self)
         if context.driver is not None:
             return
-        connection = await self._session.connection()
+        connection = await session.connection()
         mark = f"boundary-{next(_boundaries)}"
         await connection.exec_driver_sql(f"set local {MARK} = '{mark}'")
         context.transaction = connection.get_transaction()
@@ -177,55 +230,51 @@ class BoundarySession:
 
     def __contains__(self, instance: Any) -> bool:
         self._guard()
-        return instance in self._session
+        return instance in _held_by(self)[0]
 
     def __iter__(self) -> Any:
         self._guard()
-        return iter(self._session)
+        return iter(_held_by(self)[0])
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in THE_WRAPPERS_OWN:
-            object.__setattr__(self, name, value)
-            return
         self._guard()
         self._refuse(name)
-        setattr(self._session, name, value)
+        setattr(_held_by(self)[0], name, value)
 
     def __delattr__(self, name: str) -> None:
         self._guard()
         self._refuse(name)
-        delattr(self._session, name)
+        delattr(_held_by(self)[0], name)
 
     def __getattr__(self, name: str) -> Any:
         self._guard()
         self._refuse(name)
-        attribute = getattr(self._session, name)
+        attribute = getattr(_held_by(self)[0], name)
         if not inspect.isroutine(attribute):
             if _is_context_manager(attribute):
                 return BoundaryContext(attribute, self)
             return attribute
         if not inspect.iscoroutinefunction(attribute):
 
-            @wraps(attribute)
             def checked(*args: Any, **kwargs: Any) -> Any:
                 self._guard()
-                return attribute(*args, **kwargs)
+                return getattr(_held_by(self)[0], name)(*args, **kwargs)
 
-            return checked
+            return _named(checked, attribute)
 
-        @wraps(attribute)
         async def guarded(*args: Any, **kwargs: Any) -> Any:
             self._guard()
+            context = _held_by(self)[1]
             try:
                 await self._open()
-                answer = await attribute(*args, **kwargs)
+                answer = await getattr(_held_by(self)[0], name)(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
-                if self._context.failure is None:
-                    self._context.failure = error
+                if context.failure is None:
+                    context.failure = error
                 raise
             return answer
 
-        return guarded
+        return _named(guarded, attribute)
 
 
 @dataclass
@@ -295,6 +344,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
             token = _current.set(context)
             try:
                 async with session.begin():
+                    await context.session._open()
                     try:
                         result = await func(*args, **kwargs)
                     except BaseException as error:
@@ -308,17 +358,16 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     transaction = session.get_transaction()
                     if transaction is None or not transaction.is_active:
                         raise UnexpectedRollback(LOST_TRANSACTION)
-                    if context.driver is not None:
-                        connection = await session.connection()
-                        if not connection.in_transaction():
-                            raise UnexpectedRollback(LOST_CONNECTION)
-                        if connection.get_transaction() is not context.transaction:
-                            raise UnexpectedRollback(SPLIT_CONNECTION)
-                        driver = _driver_of(connection)
-                        if driver is not context.driver or not _in_transaction(driver):
-                            raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
-                        if _mark_of(driver) != context.mark:
-                            raise UnexpectedRollback(LOST_MARK)
+                    connection = await session.connection()
+                    if not connection.in_transaction():
+                        raise UnexpectedRollback(LOST_CONNECTION)
+                    if connection.get_transaction() is not context.transaction:
+                        raise UnexpectedRollback(SPLIT_CONNECTION)
+                    driver = _driver_of(connection)
+                    if driver is not context.driver or not _in_transaction(driver):
+                        raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
+                    if _mark_of(driver) != context.mark:
+                        raise UnexpectedRollback(LOST_MARK)
                     return result
             finally:
                 context.closed = True

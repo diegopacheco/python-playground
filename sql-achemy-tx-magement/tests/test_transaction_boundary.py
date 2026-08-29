@@ -1,5 +1,7 @@
 import asyncio
+import copy
 import inspect
+import pickle
 from decimal import Decimal
 from typing import Any
 from weakref import ReferenceType
@@ -15,7 +17,12 @@ from sqlalchemy.exc import (
     OperationalError,
     ProgrammingError,
 )
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncEngine,
+    AsyncSession,
+    async_object_session,
+)
 from sqlalchemy.orm import Session, SessionTransaction
 from sqlalchemy.util import greenlet_spawn
 
@@ -36,6 +43,7 @@ from tx import (
     DISCARDED_BY_POSTGRES,
     LOST_MARK,
     BoundarySession,
+    _held_by,
     CrossTaskTransaction,
     NoActiveTransaction,
     TransactionNotYours,
@@ -511,7 +519,7 @@ async def test_a_transaction_ended_behind_the_boundarys_back_is_not_a_commit(
     @transactional
     async def caller() -> str:
         await AccountDAO().insert("carol", Decimal("777.00"))
-        await current_session()._session.rollback()
+        await _held_by(current_session())[0].rollback()
         return "the work is done"
 
     with pytest.raises(UnexpectedRollback):
@@ -703,7 +711,7 @@ async def test_the_three_names_for_the_sync_session_are_all_refused(bank: BankSe
     @transactional
     async def same_object() -> bool:
         session = current_session()
-        return session._session._proxied is session._session.sync_session
+        return _held_by(session)[0]._proxied is _held_by(session)[0].sync_session
 
     assert await same_object() is True
 
@@ -863,7 +871,7 @@ async def test_object_session_is_a_fourth_name_for_the_sync_session(bank: BankSe
     @transactional
     async def same_object() -> bool:
         entity = await AccountDAO().find(account.id)
-        session = current_session()._session
+        session = _held_by(current_session())[0]
         return session.object_session(entity) is session.sync_session
 
     assert await same_object() is True
@@ -931,7 +939,7 @@ async def test_the_engine_is_refused_under_both_of_its_names(bank: BankService):
 
     @transactional
     async def what_bind_hands_back() -> bool:
-        return current_session()._session.bind is engine
+        return _held_by(current_session())[0].bind is engine
 
     assert await what_bind_hands_back() is True
 
@@ -956,7 +964,7 @@ async def test_the_proxy_registry_is_a_fifth_name_for_the_sync_session(
 
     @transactional
     async def the_registry_holds_it() -> bool:
-        raw = current_session()._session
+        raw = _held_by(current_session())[0]
         return any(ref() is raw.sync_session for ref in raw._proxy_objects)
 
     assert await the_registry_holds_it() is True
@@ -980,7 +988,7 @@ async def test_the_identity_map_is_not_handed_out(bank: BankService):
     @transactional
     async def the_map_is_live() -> bool:
         entity = await AccountDAO().find(account.id)
-        held = current_session()._session.identity_map.values()
+        held = _held_by(current_session())[0].identity_map.values()
         return any(loaded is entity for loaded in held)
 
     assert await the_map_is_live() is True
@@ -1062,7 +1070,7 @@ async def test_no_name_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
             SessionTransaction,
         )
         leaked = []
-        for name in dir(wrapper._session):
+        for name in dir(wrapper):
             if name.startswith("__"):
                 continue
             try:
@@ -1314,14 +1322,19 @@ async def test_a_write_on_a_second_connection_is_the_limit_that_stays(
     assert [account.owner for account in await bank.list_accounts()] == ["mallory"]
 
 
-async def test_a_boundary_that_touches_nothing_never_asks_for_a_connection(
+async def test_a_boundary_marks_its_transaction_before_the_code_inside_it_runs(
     bank: BankService,
 ):
-    """The connection check has to be free for a method that did no database work, or
-    every @transactional call that returns early would check a connection out of the
-    pool and send a BEGIN for nothing. The flag the session wrapper sets is what buys
-    that, and the second boundary here is what proves the flag is not simply always
-    false."""
+    """The mark used to go on at the first async call the business code made, so a
+    boundary that had only staged work had no connection, no transaction identity and no
+    mark: three of the five nets were switched off for as long as nobody awaited
+    anything. That is not an exotic state. session.add() is a sync call, and an entity
+    it has staged carries the AsyncSession, which SQLAlchemy hands back through its own
+    async_object_session() - so a COMMIT sent by hand landed on a transaction the
+    boundary was not watching and the rows it made durable survived the rollback that
+    followed. The mark goes on the way in instead. It costs a connection and one SET
+    LOCAL to a boundary that refuses a request before it reads anything, and it buys
+    five nets that are armed for every line of code inside."""
     await engine.dispose()
 
     @transactional
@@ -1330,15 +1343,14 @@ async def test_a_boundary_that_touches_nothing_never_asks_for_a_connection(
         return "no query was made"
 
     assert await touches_nothing() == "no query was made"
-    assert engine.pool.checkedin() == 0
+    assert engine.pool.checkedin() == 1
 
     @transactional
-    async def touches_the_database() -> int:
-        result = await current_session().execute(text("select 1"))
+    async def what_the_transaction_is_marked_with() -> str:
+        result = await current_session().execute(text("show application_name"))
         return result.scalar_one()
 
-    assert await touches_the_database() == 1
-    assert engine.pool.checkedin() == 1
+    assert (await what_the_transaction_is_marked_with()).startswith("boundary-")
 
 
 async def test_a_context_manager_does_not_hand_the_sync_session_back(bank: BankService):
@@ -1387,8 +1399,8 @@ async def test_a_deletion_runs_the_same_block_list_as_a_read(bank: BankService):
     """__getattr__ and __setattr__ were guarded and __delattr__ was not, which left the
     third route into an attribute unguarded. It reached nothing on the session, so a
     deletion the caller believed had landed silently had not; and because the names the
-    wrapper keeps for itself live in its own __dict__, deleting one of those left
-    __getattr__ recursing into itself until Python gave up. A refusal has to name
+    wrapper keeps for itself is one name it hides, deleting it has to be refused by
+    name rather than left to land on the session or to recurse. A refusal has to name
     itself, and a RecursionError names nothing."""
 
     @transactional
@@ -1400,10 +1412,8 @@ async def test_a_deletion_runs_the_same_block_list_as_a_read(bank: BankService):
 
     @transactional
     async def delete_what_the_wrapper_keeps() -> str:
-        try:
-            del current_session()._context
-        except AttributeError:
-            pass
+        with pytest.raises(TransactionNotYours):
+            del current_session()._held
         result = await current_session().execute(text("select 1"))
         return f"still alive with {result.scalar_one()}"
 
@@ -1443,19 +1453,26 @@ async def test_work_spawned_inside_a_boundary_opens_its_own_transaction_after_it
     your task" when the truth was "that transaction ended", which is the answer the
     wrapper already gives through the same closed flag. Checking the flag first makes
     the two agree, and a task that outlives the boundary gets a transaction of its
-    own instead of a diagnosis that names the wrong thing."""
+    own instead of a diagnosis that names the wrong thing. It has to really outlive the
+    boundary to prove that, so the task waits for an event the caller sets after the
+    boundary has returned. Sleeping instead read whatever the scheduler did between
+    creating the task and committing: a boundary that does any IO suspends there, and a
+    task that wakes up inside one that is still open gets the refusal the test next door
+    asks for."""
     account = await bank.open_account("alice", Decimal("10.00"))
     spawned = {}
+    the_boundary_has_ended = asyncio.Event()
 
     @transactional
     async def start_background_work() -> None:
         async def later() -> AccountView:
-            await asyncio.sleep(0)
+            await the_boundary_has_ended.wait()
             return await bank.get_account(account.id)
 
         spawned["task"] = asyncio.create_task(later())
 
     await start_background_work()
+    the_boundary_has_ended.set()
 
     assert (await spawned["task"]).balance == Decimal("10.00")
 
@@ -1737,7 +1754,7 @@ async def test_the_decorator_applied_twice_is_still_one_transaction(bank: BankSe
     @transactional
     @transactional
     async def twice() -> None:
-        sessions.append(current_session()._session)
+        sessions.append(current_session())
         await AccountDAO().insert("alice", Decimal("1.00"))
 
     await twice()
@@ -2107,7 +2124,7 @@ async def test_no_call_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
             SessionTransaction,
         )
         leaked = []
-        for name in dir(wrapper._session):
+        for name in dir(wrapper):
             if name.startswith("__"):
                 continue
             try:
@@ -2559,3 +2576,299 @@ async def test_a_boundary_cancelled_waiting_for_a_lock_releases_nothing_and_hold
     assert (await bank.get_account(alice.id)).balance == Decimal("100.00")
     assert (await bank.deposit(alice.id, Decimal("1.00"))).balance == Decimal("101.00")
     assert engine.pool.checkedout() == 0
+
+
+ESCAPES = (
+    Engine,
+    AsyncEngine,
+    Session,
+    AsyncSession,
+    Connection,
+    AsyncConnection,
+    Transaction,
+    SessionTransaction,
+)
+
+
+def reachable(value: Any) -> list[Any]:
+    found = [value]
+    for name in ("__self__", "__func__", "__wrapped__"):
+        try:
+            found.append(getattr(value, name))
+        except BaseException:
+            pass
+    try:
+        found += [cell.cell_contents for cell in (value.__closure__ or ())]
+    except BaseException:
+        pass
+    try:
+        found += list(value.__dict__.values())
+    except BaseException:
+        pass
+    return [held for one in found for held in inside(one)]
+
+
+def inside(value: Any, depth: int = 3) -> list[Any]:
+    if depth == 0:
+        return [value]
+    if isinstance(value, dict):
+        held = [*value.keys(), *value.values()]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        held = list(value)
+    elif isinstance(value, ReferenceType):
+        held = [value()]
+    else:
+        return [value]
+    return [value, *(one for held_one in held for one in inside(held_one, depth - 1))]
+
+
+def escaped(value: Any) -> list[str]:
+    return [type(one).__name__ for one in reachable(value) if isinstance(one, ESCAPES)]
+
+
+async def test_a_call_the_wrapper_hands_out_is_not_a_handle_on_the_one_it_wraps(
+    bank: BankService,
+):
+    """functools.wraps sets __wrapped__ on everything it decorates, so every call the
+    wrapper handed out carried the raw bound method of the AsyncSession under a
+    documented name. Reaching it skipped the guard entirely, which meant _open() never
+    ran: no connection was marked, no driver and no transaction identity were recorded,
+    and three of the five nets were switched off for the rest of the boundary. An INSERT
+    and a raw COMMIT sent through it wrote a row that survived, and the boundary
+    returned success. The wrapper keeps the name and the docstring of the call it stands
+    in for and hands back no route to it."""
+
+    @transactional
+    async def the_old_way_in() -> str:
+        raw = current_session().execute.__wrapped__
+        await raw(text("insert into accounts (owner, balance) values ('alice', 1.00)"))
+        await raw(text("commit"))
+        return "the work is done"
+
+    with pytest.raises(AttributeError):
+        await the_old_way_in()
+
+    assert await bank.list_accounts() == []
+
+    @transactional
+    async def what_a_call_carries() -> tuple[str, str, list[str], list[str]]:
+        session = current_session()
+        return (
+            session.execute.__name__,
+            session.add.__name__,
+            escaped(session.execute),
+            escaped(session.add),
+        )
+
+    assert await what_a_call_carries() == ("execute", "add", [], [])
+
+
+async def test_the_wrapper_hides_the_one_name_it_keeps_for_itself(bank: BankService):
+    """The wrapper has to hold the session and the transaction somewhere, and it held
+    them in its own __dict__ under _session and _context. Both were plain instance
+    attributes: reading one handed back the AsyncSession, and writing to _context turned
+    the nets off from inside the boundary - driver = None skipped the last three checks
+    and the rollback that gives the connection back clean, closed = True made the next
+    joined call open a second transaction that committed on its own while the outer one
+    rolled back. A wrapper is not allowed to be a wider door than the thing it wraps, and
+    the session it stands in for has no such name."""
+
+    @transactional
+    async def reach_for_what_the_wrapper_keeps() -> list[str]:
+        session = current_session()
+        refused = []
+        for name in ("_held", "__dict__"):
+            try:
+                getattr(session, name)
+            except TransactionNotYours:
+                refused.append(f"get {name}")
+            try:
+                setattr(session, name, None)
+            except TransactionNotYours:
+                refused.append(f"set {name}")
+            try:
+                delattr(session, name)
+            except TransactionNotYours:
+                refused.append(f"del {name}")
+        try:
+            vars(session)
+        except TransactionNotYours:
+            refused.append("vars")
+        return refused
+
+    assert await reach_for_what_the_wrapper_keeps() == [
+        "get _held",
+        "set _held",
+        "del _held",
+        "get __dict__",
+        "set __dict__",
+        "del __dict__",
+        "vars",
+    ]
+
+    @transactional
+    async def the_old_names_are_the_sessions_answer() -> list[str]:
+        session = current_session()
+        missing = []
+        for name in ("_session", "_context"):
+            try:
+                getattr(session, name)
+            except AttributeError as error:
+                missing.append(type(error).__name__ + " " + name)
+        return missing
+
+    assert await the_old_names_are_the_sessions_answer() == [
+        "AttributeError _session",
+        "AttributeError _context",
+    ]
+
+
+async def test_the_pickle_protocol_does_not_hand_the_session_out(bank: BankService):
+    """Hiding a name from getattr is not hiding it: object.__reduce_ex__ reads the
+    instance __dict__ in C, under the attribute hook rather than through it, and handed
+    the whole state back as the second half of a reduce tuple - the AsyncSession and the
+    TransactionContext both, to anything that pickled or copied the session. copy.copy()
+    was worse than a leak before that: rebuilding the wrapper without its state left
+    __getattr__ asking for a name that was not there and recursing until Python gave up,
+    so the answer to an ordinary copy was a RecursionError naming nothing."""
+
+    @transactional
+    async def every_way_at_the_state() -> list[tuple[str, str]]:
+        session = current_session()
+        attempts = {
+            "__getstate__": lambda: session.__getstate__(),
+            "__reduce__": lambda: session.__reduce__(),
+            "__reduce_ex__": lambda: session.__reduce_ex__(2),
+            "pickle": lambda: pickle.dumps(session),
+            "copy": lambda: copy.copy(session),
+            "deepcopy": lambda: copy.deepcopy(session),
+        }
+        answers = []
+        for name, attempt in attempts.items():
+            try:
+                answers.append((name, f"handed back {escaped(attempt())}"))
+            except TransactionNotYours:
+                answers.append((name, "refused"))
+            except BaseException as error:
+                answers.append((name, type(error).__name__))
+        return answers
+
+    assert await every_way_at_the_state() == [
+        ("__getstate__", "refused"),
+        ("__reduce__", "refused"),
+        ("__reduce_ex__", "refused"),
+        ("pickle", "refused"),
+        ("copy", "refused"),
+        ("deepcopy", "refused"),
+    ]
+
+
+async def test_no_dunder_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
+    bank: BankService,
+):
+    """The two sweeps next door walk dir() and skip every name that starts with two
+    underscores, which is exactly where the last escapes were: __dict__ held the session
+    and __reduce_ex__ handed the same dict out through the copy protocol. A dunder is
+    still a name, and Python calls more of them on an object than any caller ever types
+    by hand."""
+
+    @transactional
+    async def sweep() -> list[str]:
+        wrapper = current_session()
+        leaked = []
+        for name in sorted(set(dir(wrapper)) | set(dir(object)) | set(dir(type))):
+            if not name.startswith("__"):
+                continue
+            try:
+                value = getattr(wrapper, name)
+            except BaseException:
+                continue
+            if escaped(value):
+                leaked.append(name)
+        return leaked
+
+    assert await sweep() == []
+
+
+async def test_the_holder_for_a_context_manager_hides_what_it_holds(bank: BankService):
+    """no_autoflush is wrapped rather than refused, because entering it is a legitimate
+    thing for a DAO to do. The holder that wraps it kept the manager and the wrapper in
+    its own __dict__ the same way, so vars() on it handed back the generator whose frame
+    carries the sync Session - the sixth name for the object the other five are refused
+    for, reached without typing any of them."""
+
+    @transactional
+    async def reach_into_the_holder() -> list[str]:
+        holder = current_session().no_autoflush
+        refused = []
+        for attempt in (
+            lambda: getattr(holder, "_held"),
+            lambda: vars(holder),
+            lambda: holder.__reduce_ex__(2),
+            lambda: getattr(holder, "gen"),
+        ):
+            try:
+                attempt()
+            except TransactionNotYours:
+                refused.append("refused")
+        return refused
+
+    assert await reach_into_the_holder() == ["refused"] * 4
+
+    @transactional
+    async def entering_it_still_works() -> str:
+        with current_session().no_autoflush as inside:
+            account = await AccountDAO().insert("alice", Decimal("1.00"))
+        return f"{type(inside).__name__} kept {account.owner}"
+
+    assert await entering_it_still_works() == "BoundarySession kept alice"
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_the_wrapper_answers_dir_the_way_the_session_does(bank: BankService):
+    """Hiding __dict__ breaks the default __dir__, which reads it, and a wrapper that
+    cannot be listed is a wrapper that has broken a session API to protect itself. It
+    answers with the session's own names instead, which is what a caller asking a
+    session what it can do is asking for - and what the two sweeps walk, so an escape
+    added to the session is an escape they now see."""
+
+    @transactional
+    async def what_it_lists() -> tuple[bool, bool, bool]:
+        session = current_session()
+        names = dir(session)
+        return "execute" in names, "sync_session" in names, "_held" in names
+
+    assert await what_it_lists() == (True, True, False)
+
+
+async def test_a_commit_through_the_session_an_entity_carries_is_not_a_commit(
+    bank: BankService,
+):
+    """object_session and _proxied are refused on the wrapper, and SQLAlchemy hands the
+    same AsyncSession back from module level: async_object_session() takes any entity the
+    session has and returns the session itself. No private name is typed and nothing is
+    imported that a DAO does not already import. It reached an unwatched boundary
+    because the mark went on at the first async call, and the entity here is staged with
+    session.add(), which is sync: a raw COMMIT then ran on a transaction with no driver,
+    no identity and no mark recorded against it, and the boundary returned success over
+    two rows it had not committed. The mark goes on before any of this code runs, so the
+    same COMMIT is the mark going missing."""
+
+    @transactional
+    async def commit_it_by_hand() -> str:
+        session = current_session()
+        staged = Account(owner="carol", balance=Decimal("1.00"))
+        session.add(staged)
+        raw = async_object_session(staged)
+        assert isinstance(raw, AsyncSession)
+        await raw.execute(text("commit"))
+        await raw.execute(
+            text("insert into accounts (owner, balance) values ('dave', 2.00)")
+        )
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback) as refused:
+        await commit_it_by_hand()
+
+    assert str(refused.value) == LOST_MARK
+    assert await bank.list_accounts() == []

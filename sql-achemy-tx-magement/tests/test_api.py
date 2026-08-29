@@ -708,3 +708,68 @@ async def test_the_ui_renders_money_without_a_float_in_the_way(
     assert "Number(" not in renderer
     assert "parseFloat" not in renderer
     assert "toFixed" not in renderer
+
+
+TX_NOTES = [
+    ("keep the session on the task", "def _running_task", None),
+    ("how the wrapper holds a session", "def _held_by", "return wrapper"),
+    ("wrap the context managers", "class BoundaryContext:", "NOT_YOURS_TO_HOLD"),
+    ("two refusals every route into the session shares", "def _guard", "_check_task"),
+    ("why one check is not three", "self._guard()", None),
+    ("are the block list", "def _refuse", None),
+    ("refuse <code>stream()", "if name in UNGUARDABLE:", None),
+    ("refuse the session's own context manager", "async def __aenter__", "NOT_YOURS_TO_CLOSE"),
+    ("two session APIs a wrapper made of", "def __contains__", "return iter(_held_by"),
+    ("guard the assignment", "def __setattr__", "setattr(_held_by"),
+    ("guard the deletion", "def __delattr__", "delattr(_held_by"),
+    ("wrap the methods that are not coroutines", "if not inspect.isroutine", "_named(checked"),
+    ("why a swallowed database error cannot", "async def guarded", "_named(guarded"),
+    ("check the connection out, mark the transaction", "async def _open", "context.mark = mark"),
+    ("refuse a function that is not", "if not inspect.iscoroutinefunction(func):", "is not one"),
+    ("is the propagation rule", "joined = _active()", None),
+    ("are participation semantics", "except BaseException as error:", "raise"),
+    ("is the boundary. <code>session.begin()", "async with session.begin():", None),
+    ("arms the nets before any of the code", "await context.session._open()", None),
+    ("refuse the commit when a joined call", "except BaseException as error:", "_rollback_only"),
+    ("are the second net behind", "transaction = session.get_transaction()", "LOST_TRANSACTION"),
+    ("are the third net", "connection = await session.connection()", "SPLIT_CONNECTION"),
+    ("are the last two nets", "driver = _driver_of(connection)", "LOST_MARK"),
+    ("close the context, restore the previous one", "finally:", "_leave_no_transaction_open"),
+]
+
+
+async def test_the_how_it_works_page_points_at_the_lines_it_names(
+    client: httpx.AsyncClient,
+):
+    """The code block is pinned to the source and the prose around it was not, so the
+    numbers went stale on their own: every note from the decorator down named lines that
+    had moved eighteen rows when the mark nets were added, and the page confidently
+    pointed at a rollback while talking about the propagation rule. A note that names the
+    wrong line is worse than one that names none, because a reader checks it. Each note
+    is pinned to the code it is about rather than to a number."""
+    page = (await client.get("/")).text
+    code = re.search(r"const TX_CODE = `(.*?)`;", page, re.S).group(1).split("\n")
+    card = page.split('id="code"></ol></pre>')[1].split('<div class="card">')[0]
+    notes = re.findall(r'<p class="note">(.*?)</p>', card, re.S)
+    ranges = [
+        (note, int(found.group(1)), int(found.group(2) or found.group(1)))
+        for note in notes
+        if (found := re.match(r"<b>Lines? (\d+)(?:&ndash;(\d+))?", note))
+    ]
+
+    assert len(ranges) == len(notes) == len(TX_NOTES)
+
+    wrong = []
+    for (note, first, last), (phrase, opens, closes) in zip(ranges, TX_NOTES):
+        if phrase not in note:
+            wrong.append(f"{phrase!r} is not the note at line {first}")
+            continue
+        if not 1 <= first <= last <= len(code):
+            wrong.append(f"{phrase!r} names lines {first}-{last} of {len(code)}")
+            continue
+        if opens not in code[first - 1]:
+            wrong.append(f"{phrase!r} says line {first} is {opens!r}: {code[first - 1]}")
+        if closes is not None and closes not in code[last - 1]:
+            wrong.append(f"{phrase!r} says line {last} is {closes!r}: {code[last - 1]}")
+
+    assert wrong == []
