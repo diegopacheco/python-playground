@@ -56,8 +56,20 @@ Deciding what to wrap by `callable()` was itself a bug, and the wrong kind. A `@
 because a context manager doubles as a decorator, so `no_autoflush` came back wrapped in a plain function with no
 `__enter__` and `with current_session().no_autoflush:` was a `TypeError`. The wrapper was silently breaking a session
 API instead of guarding it or refusing it, which is the one thing this design is not allowed to do: every other route
-it will not allow says so and names itself. Only routines are wrapped now. Everything else is either on the block list
-or a value.
+it will not allow says so and names itself. Only routines are wrapped now.
+
+Handing the context manager straight back was the deeper half of that bug, and it took an adversarial pass to find. A
+`@contextmanager` yields, and what `no_autoflush` yields is the sync `Session` itself; the generator keeps the same
+object in `gi_frame.f_locals`, so `current_session().no_autoflush.gen.gi_frame.f_locals["self"]` was a second way to
+the same place. `run_sync`, `sync_session`, `_proxied`, `object_session` and `_proxy_objects` are all refused for
+handing out that `Session`, and `await greenlet_spawn(session.commit)` through this sixth name is exactly what
+`run_sync` would have done: it committed the first half of the boundary, that half survived the rollback meant to undo
+it, and the boundary died on a raw `InvalidRequestError`. The audit that walks every session name could not see it,
+because it follows dicts and weakrefs and a frame is neither. Refusing the name would break a session API the wrapper
+exists to pass through, which is the one thing this design is not allowed to do, so the manager is wrapped instead:
+entering and exiting cross the boundary, entering hands back the `BoundarySession` rather than whatever the manager
+yielded, and every other name on it is refused. The audit now follows frames and enters what it can, so the next one is
+a failing test rather than a paragraph. Everything else is on the block list, wrapped, or a value.
 
 A `@transactional` frame is not the only thing that can poison the transaction, and it must not be. A database error
 caught straight off a DAO never crosses one, but Postgres has already aborted that transaction, and committing an
@@ -133,6 +145,13 @@ entirely, so the very next read of `bind` handed back the assigned value instead
 as the code that never assigns to it. `__setattr__` now takes the same guard and the same block list `__getattr__`
 does, and what it allows lands on the real session.
 
+`__delattr__` is the third route, and it was open for the reason the second one was. A `del` through the wrapper landed
+on the wrapper's own `__dict__` and never reached the session, so a deletion the caller believed had happened had not.
+The sharper half is the same shape as before: `_session` and `_context` are the two names the wrapper really keeps
+there, so deleting one of them left `__getattr__` looking itself up until Python gave up with a `RecursionError` — a
+refusal that names nothing, in a wrapper whose whole argument is that every route it will not allow says what it is.
+All three routes now run the same guard and the same list.
+
 `async with session:` is the last route a list of names could not see, because Python looks `__aenter__` up on the type
 and the name check never runs. It closes the session on the way out, which is `close()` reached through a syntax rather
 than through a name. It was already impossible, but only by accident — a `TypeError` about a missing `__aexit__` — and
@@ -149,7 +168,13 @@ method *returns*. A commit through it split a transfer exactly the way `run_sync
 boundary rolled back the credit around it — and SQLAlchemy's `SessionTransaction` still reported `is_active` true
 afterwards, so the liveness check saw nothing and the boundary failed at `COMMIT` with a raw `InvalidRequestError`
 instead. The connection knows what the session does not: `in_transaction()` is false. So the boundary asks the
-connection as well, which is the third net and the only one that answers for the layer underneath. It costs a method
+connection as well, which is the third net and the only one that answers for the layer underneath. Asking whether *a*
+transaction is open turned out not to be the same as asking whether it is *the* one, and the gap between them is a
+single session call wide: anything the boundary does after the split autobegins a fresh transaction on the same
+connection, `in_transaction()` answers true again, both earlier nets pass, and the raw `InvalidRequestError` this net
+exists to replace comes back with the pre-split half committed. So the boundary records the connection's transaction
+on the first session call that reaches the database and compares identities at the end, which is the question that has
+an answer in both shapes. It costs a method
 that never touched the database nothing, because the session wrapper records whether it was used at all. It does not
 make the route impossible — the split already happened and half of it is committed — but a named `UnexpectedRollback`
 is something the caller can act on and a SQLAlchemy state error is not. A raw `ROLLBACK` string still gets past all
@@ -168,17 +193,17 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **One decorator marks the boundary** — `@transactional` on a service method is the only transaction code in the project.
 - **Automatic propagation** — a nested call, including a call into a different service, joins the caller's transaction instead of opening a second one.
 - **Rollback-only participation** — a failed joined call poisons the transaction, so swallowing the exception cannot produce a half-committed transfer.
-- **A returned boundary really committed** — three nets, not one. Any `DBAPIError` or `CancelledError` off the session poisons the transaction even if the caller swallows it; a deactivated `SessionTransaction` is caught before the commit; and the connection underneath is asked too, because a transaction ended there leaves the session still reporting `is_active`. The one call that could not be watched that way, `stream()`, is refused rather than left open as a hole.
-- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `reset`, `invalidate`, `connection`, `get_bind`, `bind`, `get_transaction`, `get_nested_transaction`, `identity_map`, `sync_session`, `run_sync`, `_proxied`, `_proxy_objects`, `object_session` and `stream` raise instead of splitting the boundary or hiding a failure, and the wrapper dies with its boundary. Every route runs the same list: the lookup, an assignment, and the session's own `async with`, because a name check that only covers reads leaves a write and a syntax open. `run_sync`, `_proxied`, `object_session` and `_proxy_objects` are in that list because they are four more names for the same sync `Session` that `sync_session` is refused for, and `bind` because it is a second name for the `Engine` that `get_bind` is refused for — one that never appears in `dir()`, so an audit of the class misses it. A test walks every name the session really has rather than trusting the list.
+- **A returned boundary really committed** — three nets, not one. Any `DBAPIError` or `CancelledError` off the session poisons the transaction even if the caller swallows it; a deactivated `SessionTransaction` is caught before the commit; and the connection underneath is asked too, because a transaction ended there leaves the session still reporting `is_active`. The third net asks for the *identity* of the transaction it started, not merely whether one is open, because a single session call after a split autobegins another one and hides it. The one call that could not be watched that way, `stream()`, is refused rather than left open as a hole.
+- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `reset`, `invalidate`, `connection`, `get_bind`, `bind`, `get_transaction`, `get_nested_transaction`, `identity_map`, `sync_session`, `run_sync`, `_proxied`, `_proxy_objects`, `object_session` and `stream` raise instead of splitting the boundary or hiding a failure, and the wrapper dies with its boundary. Every route runs the same list: the lookup, an assignment, and the session's own `async with`, because a name check that only covers reads leaves a write and a syntax open. `run_sync`, `_proxied`, `object_session` and `_proxy_objects` are in that list because they are four more names for the same sync `Session` that `sync_session` is refused for, and `bind` because it is a second name for the `Engine` that `get_bind` is refused for — one that never appears in `dir()`, so an audit of the class misses it. A deletion runs the list too, because a read and a write are only two of the three ways at an attribute. The context managers the session hands out are wrapped rather than refused, because `no_autoflush` yields the sync `Session` and carries it in its generator frame — a sixth name for the object the other five are refused for, and one no list of session names can reach. A test walks every name the session really has, follows the frames and enters what it can, rather than trusting the list.
 - **Contention handled with row locks** — `SELECT ... FOR UPDATE` serialises the read-modify-write per account, so concurrent deposits cannot lose updates.
 - **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, and a ledger entry takes the same lock before its foreign keys do, so no two writers queue in opposite orders.
-- **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money.
+- **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money. The size check is `copy_abs()` and not `abs()`, because `abs()` reads the decimal context and raises `Overflow` for an exponent past `Emax` instead of answering, which turned an amount the column obviously cannot hold into a `500`.
 - **Invisible session** — controller, DAO and models never take, pass or close a session; `current_session()` finds it.
 - **Rollback proven against real Postgres** — the ledger row is flushed before the money moves, so a failure rolls back a write that already reached the database.
 - **The database enforces it too** — `CHECK (balance >= 0)` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind.
 - **Bounded waiting** — `lock_timeout` and `statement_timeout` are set on every connection, so a stalled transaction cannot block a hot account forever, and a request that cannot get a connection out of the pool gives up rather than queueing behind it; all three surface as `503` rather than a hang.
 - **Frozen views cross the boundary** — the service returns dataclasses, never ORM entities, so nothing detached ever reaches the controller.
-- **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it. The refusal is on the lookup, on the wrapper, on an assignment through it, and inside every call the wrapper hands out, so capturing the session, capturing one of its methods, setting a flag on it, or gathering two calls made on the right task are all refused rather than committed.
+- **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it. The refusal is on the lookup, on the wrapper, on an assignment through it, on a deletion through it, and inside every call the wrapper hands out, so capturing the session, capturing one of its methods, setting a flag on it, or gathering two calls made on the right task are all refused rather than committed. A task that outlives the boundary gets a transaction of its own instead, because the lookup asks whether the transaction ended before it asks whose task this is.
 - **Cancellation is a rollback** — a joined call killed by a timeout poisons the transaction, and so does a statement cancelled inside a plain DAO call, so a caller that swallows the `TimeoutError` still cannot commit either way.
 - **Fails loud outside a boundary** — DAO access with no open transaction, or through a session kept past its boundary, raises `NoActiveTransaction` instead of auto-committing, and `@transactional` on a function that is not `async def` is a `TypeError` at import rather than a confusing one at call time.
 - **UI that shows the boundary** — every action prints COMMIT or ROLLBACK with the balances before and after, and the annotated `tx.py` on the *How it works* tab is pinned to the real file by a test, so the page cannot drift into documenting a boundary nobody is running.
@@ -214,7 +239,12 @@ The UI is at `http://localhost:8000/` and Swagger UI at `http://localhost:8000/d
 | `GET` | `/api/ledger` | — | All committed ledger entries. |
 
 An amount that is not money — finer than a cent, too large for the column, or large enough that the resulting balance
-would not fit — is a `400`. A non-finite amount is a `422`, not a `400`, because the request model refuses `NaN` and
+would not fit — is a `400`. That holds for every finite `Decimal` the request model will parse, which is a wider set
+than it looks: `{"amount": "1E+999999999"}` is finite, and the size check has to answer for it rather than raise. It
+did raise, because `abs()` is a decimal *context* operation and signals `Overflow` above `Emax`, so an
+`ArithmeticError` nothing handles left as a `500` from all four routes that take money. `copy_abs()` is the
+context-free spelling and the fix is that one word; `test_an_amount_past_the_decimal_contexts_exponent_limit_is_refused`
+and its counterpart over HTTP pin it. A non-finite amount is a `422`, not a `400`, because the request model refuses `NaN` and
 `Infinity` before the service ever sees them; `_check_money()` still refuses them for a caller that reaches the service
 directly. An id or an owner outside what the schema can hold is a `422` from the request model too. An owner of nothing but
 spaces is a `400` rather than a `422`: `min_length` refuses the empty string, but a string of spaces is a value the
@@ -259,7 +289,7 @@ For the default Spring settings, yes on everything that matters. The differences
 | Statement cancelled inside a DAO call, caller swallows it | no equivalent; a thread interrupt is not a rollback signal | rollback-only, the session records the `CancelledError` |
 | Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task or `to_thread()` worker is refused the inherited session, and refused the captured one |
 | Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the session recorded the `DBAPIError` that poisoned it |
-| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session name that could, `run_sync`, `_proxied`, `object_session`, `_proxy_objects`, `get_bind` and `bind` included, on reads and on assignments alike; a commit through the `Connection` a result object carries is caught at the end as `UnexpectedRollback`; reaching around it through `_session`, `sqlalchemy.orm.object_session(entity)` or a raw `ROLLBACK` string still works |
+| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session name that could, `run_sync`, `_proxied`, `object_session`, `_proxy_objects`, `get_bind` and `bind` included, on reads, assignments and deletions alike, and on what an allowed name carries: `no_autoflush` hands out a wrapper rather than the sync `Session` it yields; a commit through the `Connection` a result object carries is caught at the end as `UnexpectedRollback`, by identity and not merely by "some transaction is open"; reaching around it through `_session`, `sqlalchemy.orm.object_session(entity)` or a raw `ROLLBACK` string still works |
 | `REQUIRES_NEW`, `NESTED`, `SUPPORTS`, `MANDATORY` | supported | not implemented |
 | `readOnly`, `isolation`, `timeout` | supported | not implemented |
 
@@ -352,9 +382,10 @@ Honest limits, since this is a POC and not a payment system:
 - A swallowed database error is caught either way, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints. Caught through a `@transactional` call it is rollback-only; caught straight off a DAO the session recorded it anyway. Both end as `UnexpectedRollback` rather than a confusing SQLAlchemy state error or, worse, a quiet success.
 - `withdraw()` and `deposit()` re-lock the row they were handed, because both are callable on their own and have to be safe that way. A transfer therefore spends six round trips where four would do. The redundant locks are already held, so they cost latency and never risk.
 - The lock is per account row, so unrelated accounts never block each other, but a hot account serialises every transfer that touches it. That is the intended trade: correctness first.
-- The refusals in `BoundarySession` are a guard against a mistake, not a security boundary. The block list covers every session name that can end or split the transaction, hand out the sync `Session` under it or hand out the engine behind it — `run_sync`, `_proxied`, `_proxy_objects`, `get_bind`, `bind` and `get_nested_transaction` included — and it runs on assignments and on `async with session:` as well as on reads, because a check that only covers the lookup leaves two routes open. What it cannot cover is anything that is not a name on the session: `_session`, and a raw `COMMIT` or `ROLLBACK` string. A raw `ROLLBACK` is the sharp one: it ends the transaction inside Postgres, where neither SQLAlchemy nor the connection is told, so all three nets pass and the boundary reports success for work Postgres discarded. Python has no way to prevent that; the tests pin the mistakes people actually make, and `test_a_raw_rollback_string_is_past_every_net` pins the one that gets away.
-- `result.connection` is the escape worth naming on its own, because it is public API handed back by the call every DAO makes. The `CursorResult` from `execute()` carries the `Connection` the boundary is holding and the `Engine` behind it, and no list of session names reaches it — the audit that walks `dir(session)` cannot see what a method returns. It cannot be refused without proxying every result and everything a result hands back, which is the cost that got `stream()` refused, so it is caught instead: the boundary asks the connection whether it is still in a transaction before it returns, and a split arrives as `UnexpectedRollback` rather than as a SQLAlchemy state error at `COMMIT`. The split still happened and the half that ran before it is still committed; what the boundary can promise is that it will not call that success. A write made on a *second* connection opened from `result.connection.engine` is a different thing again, and the same one `bind` is refused for: it commits itself on a connection the boundary never had, so it survives the rollback and nothing here can see it.
-- A task spawned inside a boundary is refused the session, and the refusal covers every route to it: the lookup, the wrapper object, an assignment through the wrapper, a method captured off the wrapper, and a call whose lookup happened on the right task and whose await did not — `asyncio.gather()` of two `session.execute()` calls is that last one. `asyncio.gather()` of two service calls, `asyncio.shield()`, a `TaskGroup` and any background work all raise `CrossTaskTransaction` from inside a boundary, and a fire-and-forget `create_task()` fails where nobody retrieves the exception while the boundary commits around it. Fan-out has to start outside the boundary, or after it returns. What is still reachable is what is reachable everywhere: `_session`, and `sqlalchemy.orm.object_session()` on an entity a DAO loaded, are objects the boundary never handed out and cannot take back.
+- The refusals in `BoundarySession` are a guard against a mistake, not a security boundary. The block list covers every session name that can end or split the transaction, hand out the sync `Session` under it or hand out the engine behind it — `run_sync`, `_proxied`, `_proxy_objects`, `get_bind`, `bind` and `get_nested_transaction` included — and it runs on assignments, on deletions and on `async with session:` as well as on reads, because a check that only covers the lookup leaves three routes open. A name that stays allowed is covered by what it hands back rather than by the list: `no_autoflush` yields the sync `Session` and carries it in its generator frame, so it comes back as a `BoundaryContext` that lets `with` in and refuses everything else. What none of that covers is anything that is not a name on the session and not something a name hands back: `_session`, `BoundaryContext`'s own mangled `_BoundaryContext__manager`, and a raw `COMMIT` or `ROLLBACK` string. A raw `ROLLBACK` is the sharp one: it ends the transaction inside Postgres, where neither SQLAlchemy nor the connection is told, so all three nets pass and the boundary reports success for work Postgres discarded. Python has no way to prevent that; the tests pin the mistakes people actually make, and `test_a_raw_rollback_string_is_past_every_net` pins the one that gets away.
+- `result.connection` is the escape worth naming on its own, because it is public API handed back by the call every DAO makes. The `CursorResult` from `execute()` carries the `Connection` the boundary is holding and the `Engine` behind it, and no list of session names reaches it — the audit that walks `dir(session)` cannot see what a method returns. It cannot be refused without proxying every result and everything a result hands back, which is the cost that got `stream()` refused, so it is caught instead: the boundary asks the connection, before it returns, whether it is still in *the* transaction it started — by identity, not by asking whether some transaction is open, because one more session call after the split autobegins another one and puts the raw `InvalidRequestError` back. A split arrives as `UnexpectedRollback` rather than as a SQLAlchemy state error at `COMMIT`, whether or not the boundary kept working afterwards. The split still happened and the half that ran before it is still committed; what the boundary can promise is that it will not call that success. A write made on a *second* connection opened from `result.connection.engine` is a different thing again, and the same one `bind` is refused for: it commits itself on a connection the boundary never had, so it survives the rollback and nothing here can see it.
+- A task spawned inside a boundary is refused the session, and the refusal covers every route to it: the lookup, the wrapper object, an assignment through the wrapper, a method captured off the wrapper, and a call whose lookup happened on the right task and whose await did not — `asyncio.gather()` of two `session.execute()` calls is that last one. `asyncio.gather()` of two service calls, `asyncio.shield()`, a `TaskGroup` and any background work all raise `CrossTaskTransaction` from inside a boundary, and a fire-and-forget `create_task()` fails where nobody retrieves the exception while the boundary commits around it. Fan-out has to start outside the boundary, or run after it returns: a `ContextVar` is copied when the task is *created*, not when it runs, so a task started inside a boundary carries that context forever, and the lookup therefore asks whether the transaction has ended before it asks whose task this is. While the boundary is open the answer is still `CrossTaskTransaction`; once it has closed, the spawned task opens a transaction of its own rather than being told it belongs to somebody else's. What is still reachable is what is reachable everywhere: `_session`, and `sqlalchemy.orm.object_session()` on an entity a DAO loaded, are objects the boundary never handed out and cannot take back.
+- The request model parses money with pydantic's `Decimal`, which is Python's `Decimal` and therefore accepts a little more than JSON numbers do: `{"amount": "1_000"}` is one thousand and `{"amount": " 5 "}` is five. Both are values the schema can hold and money the service is happy to move, so nothing here refuses them; a payment system would pin the accepted spelling at the edge rather than leave it to the parser.
 - Streaming is refused rather than guarded. `stream()` and `stream_scalars()` are the only session calls whose failure the boundary cannot observe, so a project that needs server-side cursors has to proxy the result object before it can have both.
 - The schema is `create_all`, not migrations. The constraints are DDL, so a database created before them keeps the old shape; `podman-compose down -v` once is what applies them to an existing volume.
 
@@ -377,6 +408,30 @@ def _check_task(context: "TransactionContext") -> None:
             "the transaction belongs to the task that opened it, an AsyncSession "
             "cannot be driven from anywhere else"
         )
+
+
+def _is_context_manager(value: Any) -> bool:
+    kind = type(value)
+    return hasattr(kind, "__enter__") and hasattr(kind, "__exit__")
+
+
+class BoundaryContext:
+    def __init__(self, manager: Any, boundary: "BoundarySession") -> None:
+        self.__manager = manager
+        self.__boundary = boundary
+
+    def __enter__(self) -> Any:
+        self.__boundary._guard()
+        entered = self.__manager.__enter__()
+        if isinstance(entered, (Session, AsyncSession)):
+            return self.__boundary
+        return entered
+
+    def __exit__(self, *unused: Any) -> Any:
+        return self.__manager.__exit__(*unused)
+
+    def __getattr__(self, name: str) -> Any:
+        raise TransactionNotYours(f"{name} is not yours to reach, {NOT_YOURS_TO_HOLD}")
 
 
 class BoundarySession:
@@ -417,11 +472,18 @@ class BoundarySession:
         self._refuse(name)
         setattr(self._session, name, value)
 
+    def __delattr__(self, name: str) -> None:
+        self._guard()
+        self._refuse(name)
+        delattr(self._session, name)
+
     def __getattr__(self, name: str) -> Any:
         self._guard()
         self._refuse(name)
         attribute = getattr(self._session, name)
         if not inspect.isroutine(attribute):
+            if _is_context_manager(attribute):
+                return BoundaryContext(attribute, self)
             return attribute
         if not inspect.iscoroutinefunction(attribute):
 
@@ -437,11 +499,15 @@ class BoundarySession:
             self._guard()
             self._context.connected = True
             try:
-                return await attribute(*args, **kwargs)
+                answer = await attribute(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
                 if self._context.failure is None:
                     self._context.failure = error
                 raise
+            if self._context.transaction is None:
+                connection = await self._session.connection()
+                self._context.transaction = connection.get_transaction()
+            return answer
 
         return guarded
 ```
@@ -482,6 +548,8 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         connection = await session.connection()
                         if not connection.in_transaction():
                             raise UnexpectedRollback(LOST_CONNECTION)
+                        if connection.get_transaction() is not context.transaction:
+                            raise UnexpectedRollback(SPLIT_CONNECTION)
                     return result
             finally:
                 context.closed = True
@@ -519,7 +587,9 @@ Three inserts reached the database, one survived.
 `numeric` to `Decimal` in both directions. `Decimal` alone is not enough: the column rounds to two places on write, and
 a transfer rounds its debit and its credit independently. Moving `0.125` takes `0.12` from one account and gives `0.13`
 to the other, so twenty of them mint a cent each and `CHECK (balance >= 0)` never notices, because the invariant broken
-is conservation, not sign. `_check_money()` refuses anything non-finite, too large for the column, or that survives a
+is conservation, not sign. `_check_money()` refuses anything non-finite, too large for the column — asked with
+`copy_abs()`, because `abs()` consults the decimal context and raises `Overflow` past `Emax` instead of answering — or
+that survives a
 `quantize()` to two places with a different value — testing the value and not the exponent, so `10.00000` and `1E+1`
 are both accepted as the same ten. `_check_balance()` then refuses a deposit whose *sum* would overflow the column,
 because an amount that fits is not the same as a balance that fits. `LedgerService.record()` runs the same checks as

@@ -125,3 +125,29 @@ async def test_the_ledger_refuses_a_transfer_to_the_same_account(bank: BankServi
         await ledger.record(account.id, account.id, Decimal("5.00"))
 
     assert await bank.list_ledger() == []
+
+
+async def test_an_amount_past_the_decimal_contexts_exponent_limit_is_refused(
+    bank: BankService,
+):
+    """abs() is a context operation, so it raises decimal.Overflow for any exponent
+    above Emax instead of answering. _check_money() called it before the size check
+    could refuse the value, so an amount the column obviously cannot hold left the
+    service as an ArithmeticError nothing handles rather than as InvalidAmount.
+    copy_abs() is the context-free spelling and answers for every finite Decimal."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+    other = await bank.open_account("bob", Decimal("10.00"))
+    past_emax = Decimal("1E+999999999")
+
+    for amount in (past_emax, Decimal("-1E+999999999"), Decimal("1E+1000000")):
+        with pytest.raises(InvalidAmount):
+            await bank.deposit(account.id, amount)
+        with pytest.raises(InvalidAmount):
+            await bank.withdraw(account.id, amount)
+        with pytest.raises(InvalidAmount):
+            await bank.transfer(account.id, other.id, amount)
+
+    with pytest.raises(InvalidAmount):
+        await bank.open_account("carol", past_emax)
+
+    assert await total_balance(bank) == Decimal("20.00")

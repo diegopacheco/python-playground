@@ -7,16 +7,24 @@ from functools import wraps
 from typing import Any
 
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, AsyncTransaction
+from sqlalchemy.orm import Session
 
 from db import session_factory
 
 ROLLBACK_ONLY = "a failure inside the boundary marked the transaction rollback-only"
 LOST_TRANSACTION = "the transaction was closed or deactivated inside the boundary"
 LOST_CONNECTION = "the transaction was ended on the connection under the boundary"
+SPLIT_CONNECTION = (
+    "the transaction under the boundary was ended and another one opened in its place"
+)
 NOT_YOURS_TO_CLOSE = (
     "the session's own context manager closes it on exit; @transactional opened this "
     "transaction and is the only thing that ends it"
+)
+NOT_YOURS_TO_HOLD = (
+    "a context manager the session hands out yields the sync Session and carries it in "
+    "the frame too; entering and exiting cross the boundary and nothing else does"
 )
 UNGUARDABLE = frozenset({"stream", "stream_scalars"})
 THE_WRAPPERS_OWN = frozenset({"_session", "_context"})
@@ -77,6 +85,30 @@ def _check_task(context: "TransactionContext") -> None:
         )
 
 
+def _is_context_manager(value: Any) -> bool:
+    kind = type(value)
+    return hasattr(kind, "__enter__") and hasattr(kind, "__exit__")
+
+
+class BoundaryContext:
+    def __init__(self, manager: Any, boundary: "BoundarySession") -> None:
+        self.__manager = manager
+        self.__boundary = boundary
+
+    def __enter__(self) -> Any:
+        self.__boundary._guard()
+        entered = self.__manager.__enter__()
+        if isinstance(entered, (Session, AsyncSession)):
+            return self.__boundary
+        return entered
+
+    def __exit__(self, *unused: Any) -> Any:
+        return self.__manager.__exit__(*unused)
+
+    def __getattr__(self, name: str) -> Any:
+        raise TransactionNotYours(f"{name} is not yours to reach, {NOT_YOURS_TO_HOLD}")
+
+
 class BoundarySession:
     def __init__(self, session: AsyncSession, context: "TransactionContext") -> None:
         self._session = session
@@ -115,11 +147,18 @@ class BoundarySession:
         self._refuse(name)
         setattr(self._session, name, value)
 
+    def __delattr__(self, name: str) -> None:
+        self._guard()
+        self._refuse(name)
+        delattr(self._session, name)
+
     def __getattr__(self, name: str) -> Any:
         self._guard()
         self._refuse(name)
         attribute = getattr(self._session, name)
         if not inspect.isroutine(attribute):
+            if _is_context_manager(attribute):
+                return BoundaryContext(attribute, self)
             return attribute
         if not inspect.iscoroutinefunction(attribute):
 
@@ -135,11 +174,15 @@ class BoundarySession:
             self._guard()
             self._context.connected = True
             try:
-                return await attribute(*args, **kwargs)
+                answer = await attribute(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
                 if self._context.failure is None:
                     self._context.failure = error
                 raise
+            if self._context.transaction is None:
+                connection = await self._session.connection()
+                self._context.transaction = connection.get_transaction()
+            return answer
 
         return guarded
 
@@ -150,6 +193,7 @@ class TransactionContext:
     failure: BaseException | None = None
     closed: bool = False
     connected: bool = False
+    transaction: AsyncTransaction | None = None
     session: BoundarySession = field(init=False)
 
 
@@ -158,8 +202,9 @@ _current: ContextVar[TransactionContext | None] = ContextVar("current", default=
 
 def _active() -> TransactionContext | None:
     context = _current.get()
-    if context is not None:
-        _check_task(context)
+    if context is None or context.closed:
+        return None
+    _check_task(context)
     return context
 
 
@@ -205,6 +250,8 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         connection = await session.connection()
                         if not connection.in_transaction():
                             raise UnexpectedRollback(LOST_CONNECTION)
+                        if connection.get_transaction() is not context.transaction:
+                            raise UnexpectedRollback(SPLIT_CONNECTION)
                     return result
             finally:
                 context.closed = True

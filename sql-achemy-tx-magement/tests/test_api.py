@@ -274,3 +274,40 @@ async def test_the_readme_shows_the_decorator_that_ships():
     assert len(blocks) == 2
     for block in blocks:
         assert block in source.read_text(), block.splitlines()[0]
+
+
+async def test_an_amount_past_the_decimal_contexts_limit_is_a_bad_request(
+    client: httpx.AsyncClient,
+):
+    """The request model parses any finite Decimal, so an exponent above the decimal
+    context's Emax reached the service and abs() raised decimal.Overflow there. Nothing
+    handles an ArithmeticError, so an amount too large for the column left as an opaque
+    500 on every route that takes money, which is the one answer the API promises it is
+    not."""
+    source = (
+        await client.post(
+            "/api/accounts", json={"owner": "alice", "initial_balance": "100.00"}
+        )
+    ).json()
+    target = (
+        await client.post(
+            "/api/accounts", json={"owner": "bob", "initial_balance": "100.00"}
+        )
+    ).json()
+    past_emax = "1E+999999999"
+
+    calls = [
+        ("/api/accounts", {"owner": "carol", "initial_balance": past_emax}),
+        (f"/api/accounts/{source['id']}/deposit", {"amount": past_emax}),
+        (f"/api/accounts/{source['id']}/withdraw", {"amount": past_emax}),
+        (
+            "/api/transfers",
+            {"source_id": source["id"], "target_id": target["id"], "amount": past_emax},
+        ),
+    ]
+    for path, body in calls:
+        response = await client.post(path, json=body)
+        assert response.status_code == 400, path
+        assert response.json()["error"] == "amount is too large to store"
+
+    assert (await client.get(f"/api/accounts/{source['id']}")).json()["balance"] == "100.00"

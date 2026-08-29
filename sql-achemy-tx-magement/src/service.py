@@ -51,7 +51,7 @@ class LedgerView:
 def _check_money(value: Decimal) -> None:
     if not value.is_finite():
         raise InvalidAmount("amount must be a finite number")
-    if abs(value) >= MAX_MONEY:
+    if value.copy_abs() >= MAX_MONEY:
         raise InvalidAmount("amount is too large to store")
     if value != value.quantize(CENTS):
         raise InvalidAmount("amount cannot be finer than one cent")

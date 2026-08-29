@@ -8,12 +8,14 @@ from sqlalchemy import Connection, Engine, select, text
 from sqlalchemy.exc import IntegrityError, InvalidRequestError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy.util import greenlet_spawn
 
 from dao import AccountDAO, LedgerDAO
 from db import engine
 from models import Account
 from service import (
     AccountNotFound,
+    AccountView,
     BankService,
     InsufficientFunds,
     InvalidOwner,
@@ -1019,6 +1021,19 @@ async def test_no_name_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
             value = [value]
         return [held() if isinstance(held, ReferenceType) else held for held in value]
 
+    def frames(value: Any) -> list[Any]:
+        try:
+            frame = getattr(getattr(value, "gen", None), "gi_frame", None)
+        except TransactionNotYours:
+            return []
+        return [] if frame is None else list(frame.f_locals.values())
+
+    def entered(value: Any) -> list[Any]:
+        if not (hasattr(type(value), "__enter__") and hasattr(type(value), "__exit__")):
+            return []
+        with value as inside:
+            return [inside]
+
     @transactional
     async def sweep() -> list[str]:
         wrapper = current_session()
@@ -1031,7 +1046,8 @@ async def test_no_name_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
                 value = getattr(wrapper, name)
             except (TransactionNotYours, AttributeError):
                 continue
-            if any(isinstance(held, escapes) for held in targets(value)):
+            held = targets(value) + frames(value) + entered(value)
+            if any(isinstance(one, escapes) for one in held):
                 leaked.append(name)
         return leaked
 
@@ -1228,3 +1244,134 @@ async def test_a_boundary_that_touches_nothing_never_asks_for_a_connection(
 
     assert await touches_the_database() == 1
     assert engine.pool.checkedin() == 1
+
+
+async def test_a_context_manager_does_not_hand_the_sync_session_back(bank: BankService):
+    """The audit followed dicts and weakrefs and did not follow a frame, so it passed a
+    name that hands out the sync Session twice over. no_autoflush is a
+    @contextmanager: it yields the Session, and its generator carries the same Session
+    in gi_frame.f_locals. run_sync, sync_session, _proxied, object_session and
+    _proxy_objects are all refused for handing out that object, and this was a sixth
+    name for it that no block list on the session could see."""
+
+    @transactional
+    async def what_entering_gives_back() -> bool:
+        with current_session().no_autoflush as inside:
+            return inside is current_session()
+
+    assert await what_entering_gives_back() is True
+
+    @transactional
+    async def reach_through_the_frame() -> None:
+        current_session().no_autoflush.gen
+
+    with pytest.raises(TransactionNotYours):
+        await reach_through_the_frame()
+
+
+async def test_a_commit_through_a_context_managers_frame_is_refused(bank: BankService):
+    """The route was not theoretical. greenlet_spawn is exactly what run_sync does, so
+    the Session reached through the frame committed the boundary's first write, the
+    write survived the rollback that was supposed to undo it, and the boundary died on
+    a raw InvalidRequestError instead of naming anything."""
+
+    @transactional
+    async def half_a_write() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        sync = current_session().no_autoflush.gen.gi_frame.f_locals["self"]
+        await greenlet_spawn(sync.commit)
+        return "the work is done"
+
+    with pytest.raises(TransactionNotYours):
+        await half_a_write()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_deletion_runs_the_same_block_list_as_a_read(bank: BankService):
+    """__getattr__ and __setattr__ were guarded and __delattr__ was not, which left the
+    third route into an attribute unguarded. It reached nothing on the session, so a
+    deletion the caller believed had landed silently had not; and because the names the
+    wrapper keeps for itself live in its own __dict__, deleting one of those left
+    __getattr__ recursing into itself until Python gave up. A refusal has to name
+    itself, and a RecursionError names nothing."""
+
+    @transactional
+    async def delete_a_refused_name() -> None:
+        del current_session().commit
+
+    with pytest.raises(TransactionNotYours):
+        await delete_a_refused_name()
+
+    @transactional
+    async def delete_what_the_wrapper_keeps() -> str:
+        try:
+            del current_session()._context
+        except AttributeError:
+            pass
+        result = await current_session().execute(text("select 1"))
+        return f"still alive with {result.scalar_one()}"
+
+    assert await delete_what_the_wrapper_keeps() == "still alive with 1"
+
+
+async def test_a_split_the_boundary_kept_working_after_is_still_not_a_commit(
+    bank: BankService,
+):
+    """The connection check asked whether a transaction was open, and any session call
+    made after the split autobegins a new one, so the answer was yes and the split went
+    unnamed. The boundary then failed at COMMIT with a raw InvalidRequestError, which is
+    the error the third net exists to replace, and the half committed before the split
+    survived. It is the identity of the transaction that has to match, not the fact that
+    some transaction is open."""
+
+    @transactional
+    async def split_then_carry_on() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        result = await current_session().execute(text("select 1"))
+        await AsyncConnection._retrieve_proxy_for_target(result.connection).commit()
+        await AccountDAO().insert("dave", Decimal("888.00"))
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await split_then_carry_on()
+
+    assert [account.owner for account in await bank.list_accounts()] == ["carol"]
+
+
+async def test_work_spawned_inside_a_boundary_opens_its_own_transaction_after_it_ends(
+    bank: BankService,
+):
+    """A ContextVar is copied when the task is created, not when it runs, so a
+    fire-and-forget task started inside a boundary carried the finished context forever
+    and every @transactional call it ever made was refused. The lookup answered "not
+    your task" when the truth was "that transaction ended", which is the answer the
+    wrapper already gives through the same closed flag. Checking the flag first makes
+    the two agree, and a task that outlives the boundary gets a transaction of its
+    own instead of a diagnosis that names the wrong thing."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+    spawned = {}
+
+    @transactional
+    async def start_background_work() -> None:
+        async def later() -> AccountView:
+            await asyncio.sleep(0)
+            return await bank.get_account(account.id)
+
+        spawned["task"] = asyncio.create_task(later())
+
+    await start_background_work()
+
+    assert (await spawned["task"]).balance == Decimal("10.00")
+
+
+async def test_a_task_still_cannot_borrow_a_boundary_that_is_open(bank: BankService):
+    """The other half of the change above. Closed first must not mean the task check
+    stopped running: while the boundary is open the spawned task is still refused."""
+
+    @transactional
+    async def spawn_while_open() -> None:
+        await asyncio.create_task(bank.list_accounts())
+
+    with pytest.raises(CrossTaskTransaction):
+        await spawn_while_open()
