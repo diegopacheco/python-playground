@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import Connection, Engine, select, text
 from sqlalchemy.engine import Transaction
 from sqlalchemy.exc import (
+    ArgumentError,
     DBAPIError,
     IntegrityError,
     InvalidRequestError,
@@ -2254,3 +2255,218 @@ async def test_transactional_refuses_a_callable_that_is_not_a_function(
 
     assert "async def" in str(raised.value)
     assert "Service" in str(raised.value)
+
+
+async def test_a_swallowed_cancellation_leaves_the_task_cancelled(bank: BankService):
+    """The mirror of the rule that a cancellation leaving a poisoned boundary stays a
+    cancellation, and it was open. Here the cancellation is the poison and the business
+    code swallows it - a retry loop around `except BaseException` is the shape it takes -
+    so nothing propagates and the boundary reached the rollback-only check on a normal
+    return. Answering UnexpectedRollback there swallowed the cancellation the caller was
+    still under: the task did not end cancelled and whoever asked for it to stop was told
+    the work had failed instead. Rolling back is not in question either way; what changes
+    is whether the task ends the way asyncio was promised it would."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> str:
+        await bank.deposit(account.id, Decimal("50.00"))
+        for _ in range(3):
+            try:
+                await current_session().execute(text("select pg_sleep(5)"))
+                break
+            except BaseException:
+                continue
+        return "the retries are done"
+
+    task = asyncio.ensure_future(boundary())
+    await asyncio.sleep(0.2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert task.cancelled()
+    assert (await bank.get_account(account.id)).balance == Decimal("100.00")
+
+
+async def test_a_timeout_around_a_boundary_that_swallowed_it_is_still_a_timeout(
+    bank: BankService,
+):
+    """The same hole from the shape a caller actually writes. asyncio.timeout only
+    becomes a TimeoutError when the CancelledError it sent reaches it, so a boundary that
+    answered UnexpectedRollback instead left a caller's own deadline looking like a
+    transaction bug. The timeout is outside the boundary here, which is what makes the
+    cancellation still outstanding when the boundary finishes; a timeout the business
+    code puts inside itself has already turned its cancellation into a TimeoutError and
+    uncancelled the task, and that one still answers UnexpectedRollback."""
+    account = await bank.open_account("bob", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> str:
+        await bank.deposit(account.id, Decimal("50.00"))
+        try:
+            await current_session().execute(text("select pg_sleep(5)"))
+        except BaseException:
+            pass
+        return "swallowed it"
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await boundary()
+
+    assert (await bank.get_account(account.id)).balance == Decimal("100.00")
+
+
+async def test_a_taskgroup_is_told_its_boundary_was_stopped_not_that_it_failed(
+    bank: BankService,
+):
+    """The consequence of the same rule one layer up, and the reason it is worth a
+    net of its own. A TaskGroup cancels its remaining children when one of them fails,
+    and a child that ends with anything other than CancelledError is collected into the
+    group as a second failure. So a boundary that swallowed its cancellation turned one
+    error into two and named a transaction problem that never happened."""
+    account = await bank.open_account("carol", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> None:
+        await bank.deposit(account.id, Decimal("50.00"))
+        try:
+            await current_session().execute(text("select pg_sleep(5)"))
+        except BaseException:
+            pass
+
+    async def fails() -> None:
+        await asyncio.sleep(0.2)
+        raise InvalidOwner("the sibling is the one that failed")
+
+    with pytest.raises(BaseExceptionGroup) as raised:
+        async with asyncio.TaskGroup() as group:
+            group.create_task(boundary())
+            group.create_task(fails())
+
+    assert [type(error) for error in raised.value.exceptions] == [InvalidOwner]
+    assert (await bank.get_account(account.id)).balance == Decimal("100.00")
+
+
+async def test_a_commit_and_chain_is_caught_by_the_mark_alone(bank: BankService):
+    """The shape every net but the last one passes. `COMMIT AND CHAIN` ends the
+    transaction and opens another with the same characteristics in the same statement,
+    so SQLAlchemy is never told, the Connection still holds the transaction object the
+    boundary recorded, and the driver reports INTRANS because a transaction really is
+    open - it is simply not the one the boundary started. Only the mark can tell those
+    apart, and the money is real: the row committed by the chain survives the rollback,
+    which is exactly why the boundary must not call the result a success."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> str:
+        session = current_session()
+        await bank.deposit(account.id, Decimal("30.00"))
+        await session.execute(text("commit and chain"))
+        return "the boundary returned"
+
+    with pytest.raises(UnexpectedRollback) as raised:
+        await boundary()
+
+    assert str(raised.value) == LOST_MARK
+    assert (await bank.get_account(account.id)).balance == Decimal("130.00")
+
+
+async def test_the_words_for_commit_and_rollback_are_not_what_is_watched(
+    bank: BankService,
+):
+    """`END` and `ABORT` are postgres' own aliases, so a net that matched on the SQL
+    would have missed both. Nothing here reads the statement: END leaves the socket idle
+    and the driver says so, ABORT leaves a fresh transaction the mark cannot be in, and
+    the two arrive as different refusals for that reason."""
+
+    @transactional
+    async def ends() -> None:
+        await current_session().execute(text("end"))
+
+    @transactional
+    async def aborts() -> None:
+        session = current_session()
+        await session.execute(text("abort"))
+        await session.execute(text("select 1"))
+
+    with pytest.raises(UnexpectedRollback) as ended:
+        await ends()
+    with pytest.raises(UnexpectedRollback) as aborted:
+        await aborts()
+
+    assert str(ended.value) == DISCARDED_BY_POSTGRES
+    assert str(aborted.value) == LOST_MARK
+    assert await bank.list_accounts() == []
+
+
+async def test_autocommit_has_no_way_into_the_boundary(bank: BankService):
+    """Autocommit is the one setting that would end the transaction under every net at
+    once, because there would be no transaction left for any of them to ask about. It
+    has two entrances and both are shut before the database hears anything: SQLAlchemy
+    refuses isolation_level as a statement option with an ArgumentError, and the
+    connection-level option it points the caller at needs connection(), which is the
+    boundary's. Nothing reached postgres either way, so the work around it still
+    commits, which is the half a refusal is only worth having if it keeps."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> str:
+        session = current_session()
+        await bank.deposit(account.id, Decimal("30.00"))
+        with pytest.raises(ArgumentError):
+            await session.execute(
+                text("select 1").execution_options(isolation_level="AUTOCOMMIT")
+            )
+        with pytest.raises(TransactionNotYours):
+            await session.connection(
+                execution_options={"isolation_level": "AUTOCOMMIT"}
+            )
+        return "the boundary returned"
+
+    assert await boundary() == "the boundary returned"
+    assert (await bank.get_account(account.id)).balance == Decimal("130.00")
+
+
+async def test_the_sync_session_an_entity_carries_cannot_commit(bank: BankService):
+    """object_session() is refused as a name on the wrapper, but the same function
+    imported from SQLAlchemy answers for any entity a DAO loaded, and that is an object
+    the boundary never handed out and cannot take back. The Session it hands back cannot
+    be driven from async code at all, so the commit fails where it is written instead of
+    splitting the transaction quietly - but it fails half way through, leaving postgres
+    inside a transaction that SQLAlchemy has already stopped tracking. Nothing rolled
+    that back, the connection went into the pool still holding it, and the next boundary
+    to check it out died on a pre-ping that cannot run in a transaction: a mistake in one
+    request answered as a 500 in an unrelated one. The boundary asks the driver before it
+    lets go, so what it gives back is a connection with no transaction on it."""
+    from sqlalchemy.orm import object_session
+
+    @transactional
+    async def boundary() -> None:
+        account = await AccountDAO().insert("alice", Decimal("100.00"))
+        object_session(account).commit()
+
+    with pytest.raises(InvalidRequestError):
+        await boundary()
+
+    assert await bank.list_accounts() == []
+    assert (await bank.open_account("bob", Decimal("1.00"))).owner == "bob"
+
+
+async def test_every_refused_boundary_gives_its_connection_back(bank: BankService):
+    """A boundary the nets refuse still has to end like any other one. The rollback runs
+    against a transaction postgres has already thrown away, which is the path that leaks
+    a connection if the session is not closed underneath it, and a leak of one per call
+    is invisible until the pool is empty and every request is a 503. Forty of them in a
+    row is more than the pool plus its overflow can hold."""
+
+    @transactional
+    async def split() -> None:
+        await current_session().execute(text("commit"))
+
+    for _ in range(40):
+        with pytest.raises(UnexpectedRollback):
+            await split()
+
+    assert engine.pool.checkedout() == 0
+    assert await bank.list_accounts() == []

@@ -14,7 +14,7 @@ import service as service_module
 import tx
 from controller import app
 from dao import AccountDAO
-from db import DATABASE_URL, TIMEOUTS
+from db import DATABASE_URL, TIMEOUTS, engine
 from service import BankService, InsufficientFunds
 from tx import current_session, transactional
 
@@ -606,3 +606,57 @@ async def test_an_ordinary_validation_error_still_says_what_was_wrong(
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["body", "source_id"]
     assert response.json()["detail"][0]["type"] == "greater_than_equal"
+
+
+async def test_concurrent_transfers_through_the_api_conserve_money(
+    client: httpx.AsyncClient,
+):
+    """Every contention test drives the service directly, so the one layer none of them
+    covers is the one a user actually reaches. The controller shares a single
+    BankService across requests and the boundary is per task, so forty transfers in
+    flight over six accounts is the shape that would show a session shared between two
+    requests, a lock order that only holds when nothing else is running, or a connection
+    that a failed request never gave back. Money is conserved, every commit left exactly
+    one ledger row, and the pool is whole at the end."""
+    owners = [
+        (await client.post(
+            "/api/accounts", json={"owner": f"owner{index}", "initial_balance": "100.00"}
+        )).json()["id"]
+        for index in range(6)
+    ]
+    pairs = [(owners[i % 6], owners[(i * 5 + 1) % 6]) for i in range(48)]
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/api/transfers",
+                json={"source_id": source, "target_id": target, "amount": "10.00"},
+            )
+            for source, target in pairs
+            if source != target
+        )
+    )
+
+    committed = [one for one in responses if one.status_code == 201]
+    assert [one.status_code for one in responses if one.status_code not in (201, 409)] == []
+    accounts = (await client.get("/api/accounts")).json()
+    assert sum(Decimal(one["balance"]) for one in accounts) == Decimal("600.00")
+    assert len((await client.get("/api/ledger")).json()) == len(committed)
+    assert engine.pool.checkedout() == 0
+
+
+async def test_an_owner_the_column_cannot_store_is_a_bad_request(
+    client: httpx.AsyncClient,
+):
+    """The DataError handler is reachable without sabotaging the service, and this is
+    the request that reaches it. A NUL byte is a legal JSON string and a legal Python
+    one, the request model accepts it under min_length and max_length, and postgres text
+    cannot hold it - so psycopg refuses the INSERT after the boundary has opened. The
+    answer has to be the 400 the handler exists for rather than the 500 an unhandled
+    driver error would be, and nothing may survive the refusal."""
+    response = await client.post(
+        "/api/accounts", json={"owner": "al\x00ice", "initial_balance": "100.00"}
+    )
+
+    assert response.status_code == 400
+    assert "out of range" in response.json()["error"]
+    assert (await client.get("/api/accounts")).json() == []

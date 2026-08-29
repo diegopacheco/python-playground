@@ -5,12 +5,13 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import wraps
 from itertools import count
-from typing import Any
+from typing import Any, NoReturn
 
 from psycopg.pq import TransactionStatus
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncTransaction
 from sqlalchemy.orm import Session
+from sqlalchemy.util import greenlet_spawn
 
 from db import session_factory
 
@@ -257,6 +258,22 @@ def current_session() -> BoundarySession:
     return context.session
 
 
+async def _leave_no_transaction_open(context: "TransactionContext") -> None:
+    driver = context.driver
+    if driver is None or not _in_transaction(driver):
+        return
+    if _mark_of(driver) == context.mark:
+        await greenlet_spawn(driver.rollback)
+
+
+def _rollback_only(failure: BaseException) -> NoReturn:
+    task = _running_task()
+    cancelled = isinstance(failure, asyncio.CancelledError)
+    if cancelled and task is not None and task.cancelling():
+        raise failure
+    raise UnexpectedRollback(ROLLBACK_ONLY) from failure
+
+
 def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
     if not inspect.iscoroutinefunction(func):
         name = getattr(func, "__name__", type(func).__name__)
@@ -285,9 +302,9 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                             raise
                         if not isinstance(error, Exception):
                             raise error from context.failure
-                        raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
+                        _rollback_only(context.failure)
                     if context.failure is not None:
-                        raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
+                        _rollback_only(context.failure)
                     transaction = session.get_transaction()
                     if transaction is None or not transaction.is_active:
                         raise UnexpectedRollback(LOST_TRANSACTION)
@@ -306,5 +323,6 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
             finally:
                 context.closed = True
                 _current.reset(token)
+                await _leave_no_transaction_open(context)
 
     return wrapper
