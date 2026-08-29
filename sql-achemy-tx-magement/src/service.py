@@ -132,7 +132,7 @@ class BankService:
     async def open_account(self, owner: str, initial_balance: Decimal) -> AccountView:
         _check_owner(owner)
         _check_money(initial_balance)
-        if initial_balance < 0:
+        if initial_balance.is_signed():
             raise InvalidAmount("initial balance cannot be negative")
         return _account_view(await self.accounts.insert(owner, initial_balance))
 

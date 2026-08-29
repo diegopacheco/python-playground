@@ -2470,3 +2470,92 @@ async def test_every_refused_boundary_gives_its_connection_back(bank: BankServic
 
     assert engine.pool.checkedout() == 0
     assert await bank.list_accounts() == []
+
+
+async def test_the_service_hands_out_views_and_never_an_entity(bank: BankService):
+    """The boundary closes the session that loaded every entity it touched, so an
+    `Account` that reaches the controller is a detached object whose next attribute read
+    is a `DetachedInstanceError` - a 500 in the layer furthest from the mistake. Nothing
+    in the decorator can stop a service from returning one, so the guarantee is a shape
+    the service keeps and this is the test that keeps it: every call is made, and every
+    value that comes back is read after its boundary has ended."""
+    ledger = LedgerService()
+    alice = await bank.open_account("alice", Decimal("100.00"))
+    bob = await bank.open_account("bob", Decimal("0.00"))
+    answers = [
+        alice,
+        bob,
+        await bank.get_account(alice.id),
+        await bank.deposit(alice.id, Decimal("1.00")),
+        await bank.withdraw(alice.id, Decimal("1.00")),
+        await bank.transfer(alice.id, bob.id, Decimal("10.00")),
+        await ledger.record(alice.id, bob.id, Decimal("1.00")),
+        *await bank.list_accounts(),
+        *await bank.list_ledger(),
+        *await ledger.list_all(),
+    ]
+
+    for answer in answers:
+        assert not isinstance(answer, Account), answer
+        assert [str(getattr(answer, field)) for field in vars(answer)]
+
+
+async def test_a_two_phase_prepare_cannot_end_the_boundarys_transaction(
+    bank: BankService,
+):
+    """`PREPARE TRANSACTION` is the one statement that ends a transaction without
+    committing or rolling it back: the work stays durable and locked under a name the
+    boundary never learns, so a boundary that returned would be holding rows nothing
+    releases. Postgres ships with `max_prepared_transactions = 0`, which is what refuses
+    it here, and the point of the test is that the refusal is answered as poison rather
+    than left to a caller who swallowed it."""
+
+    @transactional
+    async def prepare() -> str:
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        try:
+            await current_session().execute(text("prepare transaction 'boundary'"))
+        except OperationalError:
+            pass
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await prepare()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_boundary_cancelled_waiting_for_a_lock_releases_nothing_and_holds_nothing(
+    bank: BankService,
+):
+    """The sibling of the mid-statement cancellation, and the one with teeth. A boundary
+    blocked on `FOR UPDATE` is parked inside Postgres, not sleeping in Python, so the
+    cancellation has to reach the server before the connection can go back. If it does
+    not, the row stays locked by a transaction nobody is waiting on any more and the
+    account is wedged for every later request - a hot row that never unblocks, which is
+    the failure this whole locking scheme exists to avoid."""
+    alice = await bank.open_account("alice", Decimal("100.00"))
+    holding, finished = asyncio.Event(), asyncio.Event()
+
+    @transactional
+    async def hold() -> None:
+        await bank.lock_account(alice.id)
+        holding.set()
+        await finished.wait()
+
+    holder = asyncio.create_task(hold())
+    await holding.wait()
+    waiters = [
+        asyncio.create_task(bank.deposit(alice.id, Decimal("1.00"))) for _ in range(5)
+    ]
+    await asyncio.sleep(0.2)
+    for waiter in waiters:
+        waiter.cancel()
+    outcomes = await asyncio.gather(*waiters, return_exceptions=True)
+    finished.set()
+    await holder
+
+    assert all(isinstance(outcome, asyncio.CancelledError) for outcome in outcomes)
+    assert (await bank.get_account(alice.id)).balance == Decimal("100.00")
+    assert (await bank.deposit(alice.id, Decimal("1.00"))).balance == Decimal("101.00")
+    assert engine.pool.checkedout() == 0

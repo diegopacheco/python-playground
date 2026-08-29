@@ -377,7 +377,7 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `reset`, `invalidate`, `connection`, `get_bind`, `bind`, `get_transaction`, `get_nested_transaction`, `identity_map`, `sync_session`, `run_sync`, `_proxied`, `_proxy_objects`, `object_session`, `_maker_context_manager` and `stream` raise instead of splitting the boundary or hiding a failure, and the wrapper dies with its boundary. Every route runs the same list: the lookup, an assignment, and the session's own `async with`, because a name check that only covers reads leaves a write and a syntax open. The special methods the session really has are defined on the wrapper rather than left to `__getattr__`, which never sees them: `entity in session` and `list(session)` are resolved on the type, so both used to be a `TypeError` naming the wrapper — the wrapper breaking a session API instead of passing it through, which is the one thing this design is not allowed to do — and a test now walks every one the session defines. `run_sync`, `_proxied`, `object_session` and `_proxy_objects` are in that list because they are four more names for the same sync `Session` that `sync_session` is refused for, and `bind` because it is a second name for the `Engine` that `get_bind` is refused for — one that never appears in `dir()`, so an audit of the class misses it. A deletion runs the list too, because a read and a write are only two of the three ways at an attribute. The context managers the session hands out are wrapped rather than refused, because `no_autoflush` yields the sync `Session` and carries it in its generator frame — a sixth name for the object the other five are refused for, and one no list of session names can reach. A test walks every name the session really has, follows the frames and enters what it can, rather than trusting the list, and a second one calls every name that needs no arguments and looks inside what comes back, because `_maker_context_manager` is a name whose danger is in what it returns rather than in what it is: the call behind `async_sessionmaker.begin()`, handing out the raw `AsyncSession`, a transaction on entry and a closed session on exit.
 - **Contention handled with row locks** — `SELECT ... FOR UPDATE` serialises the read-modify-write per account, so concurrent deposits cannot lose updates.
 - **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, and a ledger entry takes the same lock before its foreign keys do, so no two writers queue in opposite orders.
-- **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused with a `400` or a `422` and never a `500`, on the string spellings and on the JSON numbers `1e999` and `NaN` alike, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money. The size check is `copy_abs()` and not `abs()`, because `abs()` reads the decimal context and raises `Overflow` for an exponent past `Emax` instead of answering, which turned an amount the column obviously cannot hold into a `500`.
+- **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused with a `400` or a `422` and never a `500`, on the string spellings and on the JSON numbers `1e999` and `NaN` alike, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money. The size check is `copy_abs()` and not `abs()`, because `abs()` reads the decimal context and raises `Overflow` for an exponent past `Emax` instead of answering, which turned an amount the column obviously cannot hold into a `500`. The sign check on an opening balance is `is_signed()` and not `< 0`, because `-0.00` is not less than zero: it walked past every money check the service has, went into the column, and came back out of Postgres as `0.00` — the `201` that created the account and every `GET` of it disagreeing about its balance. An account the API answers twice is a worse bug than the value that caused it, and `test_negative_zero_is_not_an_opening_balance_either` and `test_an_opening_balance_reads_back_the_way_it_was_returned` pin both halves.
 - **Invisible session** — controller, DAO and models never take, pass or close a session; `current_session()` finds it.
 - **Rollback proven against real Postgres** — the ledger row is flushed before the money moves, so a failure rolls back a write that already reached the database.
 - **The database enforces it too** — `CHECK (balance >= 0 and balance <> 'NaN')` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind. The `NaN` half is not decoration: postgres orders `NaN` above every number, so `balance >= 0` is *true* for one and the check that looks like it covers the column did not. A balance the bank cannot compare is worse than a negative one — every read-then-write raises out of the decimal module instead of being refused by anything that names it.
@@ -387,7 +387,7 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **Cancellation is a rollback, and stays a cancellation** — a joined call killed by a timeout poisons the transaction, and so does a statement cancelled inside a plain DAO call, so a caller that swallows the `TimeoutError` still cannot commit either way. A cancellation that arrives at a boundary already poisoned by something else leaves as a `CancelledError` rather than as an `UnexpectedRollback`, because the rollback happens either way and a caller that is told a transaction failed cannot tell it was stopped. The mirror of that holds too: a cancellation the business code *swallows* still ends the boundary as a cancellation while the caller is waiting for the task to stop, because replacing it there is what a `TaskGroup` reads as a child that failed and what leaves an `asyncio.timeout()` around the call never becoming a `TimeoutError`. The boundary asks `Task.cancelling()` rather than guessing, so a timeout the business code wraps around its own call - already converted, already uncancelled - is a swallowed failure like any other.
 - **The connection goes back clean** — a boundary that ends for any reason asks the driver whether postgres is still inside the transaction it opened, by the same mark the fifth net uses, and sends the `ROLLBACK` itself when it is. The pool counts a connection as returned whether or not a transaction is open on it, and one route leaves it that way: a `commit()` on the sync `Session` an entity carries fails half way, sends no `COMMIT`, and leaves SQLAlchemy no longer tracking a transaction that is still open. The connection went back holding it and the *next* request died in `pool_pre_ping`, which cannot run inside a transaction — a mistake in one request answered as a `500` in an unrelated one.
 - **Fails loud outside a boundary** — DAO access with no open transaction, or through a session kept past its boundary, raises `NoActiveTransaction` instead of auto-committing, and `@transactional` on a function that is not `async def` is a `TypeError` at import rather than a confusing one at call time.
-- **UI that shows the boundary** — every action prints COMMIT or ROLLBACK with the balances before and after, and the page cannot drift away from the code it annotates: `tx.py`, `transfer()` and the locking DAO are all pinned to the real files by tests, every element the script reaches for has to be one the page declares, and every route it calls has to be one the app serves. The README is pinned the same way — its API table against the routing table, its test listing against the tests that exist.
+- **UI that shows the boundary** — every action prints COMMIT or ROLLBACK with the balances before and after, and it prints them the way the API sent them: money crosses the wire as a string of exact cents so that the largest balance `Numeric(18, 2)` holds survives the trip, and the page used to hand that string to `Number(value).toFixed(2)`, which turned `9999999999999999.00` into `10000000000000000.00` because the column reaches past what a double can count in. The renderer works on the digits instead, and shows anything that is not money verbatim rather than rounding a value the server is about to refuse. The page cannot drift away from the code it annotates either: `tx.py`, `transfer()` and the locking DAO are all pinned to the real files by tests, every element the script reaches for has to be one the page declares, and every route it calls has to be one the app serves. The README is pinned the same way — its API table against the routing table, its test listing against the tests that exist.
 - **Postgres 18 in podman** — the database starts, waits for readiness and stops from scripts, nothing installed on the host.
 
 ## Stack
@@ -419,9 +419,9 @@ The UI is at `http://localhost:8000/` and Swagger UI at `http://localhost:8000/d
 | `POST` | `/api/transfers` | `{"source_id": int, "target_id": int, "amount": str}` | `201` and the ledger entry, `404` if either account is unknown, `409` if funds are short, `400` if the two ids are the same. |
 | `GET` | `/api/ledger` | — | All committed ledger entries. |
 
-An amount that is not money — zero, negative, finer than a cent, too large for the column, or large enough that the
-resulting balance would not fit — is a `400`. Zero and a negative amount are values the request model has no reason to
-refuse, so the service is the layer that can, the same way it is for a blank owner. That holds for every finite `Decimal` the request model will parse, which is a wider set
+An amount that is not money — zero, negative, negative zero, finer than a cent, too large for the column, or large
+enough that the resulting balance would not fit — is a `400`. Zero and a negative amount are values the request model
+has no reason to refuse, so the service is the layer that can, the same way it is for a blank owner. That holds for every finite `Decimal` the request model will parse, which is a wider set
 than it looks: `{"amount": "1E+999999999"}` is finite, and the size check has to answer for it rather than raise. It
 did raise, because `abs()` is a decimal *context* operation and signals `Overflow` above `Emax`, so an
 `ArithmeticError` nothing handles left as a `500` from all four routes that take money. `copy_abs()` is the
@@ -475,16 +475,20 @@ FAILED test_money_is_conserved_around_a_cycle_of_accounts
         assert OperationalError('deadlock detected')
 FAILED test_concurrent_transfers_across_many_accounts_conserve_money
         assert OperationalError('deadlock detected')
+FAILED test_deposits_and_withdrawals_mixed_into_the_transfer_storm_hold
+        assert OperationalError('deadlock detected')
 
-6 failed, 5 passed in 23.07s
+7 failed, 5 passed in 29.68s
 ```
 
-The exact numbers move from run to run because the interleaving does; the six failures do not. In that run, ten
+The exact numbers move from run to run because the interleaving does; the seven failures do not. In that run, ten
 concurrent deposits of `10.00` into an empty account left `20.00` in it: eight writes were lost. Twenty interleaved
-ledger records and transfers over two accounts turned `2000.00` into `2007.00`: the bank invented money. The 23s
+ledger records and transfers over two accounts turned `2000.00` into `2007.00`: the bank invented money. The 30s
 runtime is Postgres deadlock detection firing over and over, because without a lock order `alice -> bob` and
 `bob -> alice` each hold the row the other one wants, and a ring of three accounts and a random fan-out over six are
-the same thing with more rows in it. As shipped, the same file runs in about a second with eleven passes.
+the same thing with more rows in it, and three hundred single-row deposits and withdrawals mixed into the same storm is
+that again with the shorter transactions queueing between them. As shipped,
+the same file runs in about a second with twelve passes.
 
 Two changes fix it, both in the service and DAO, none in `tx.py`:
 
@@ -516,6 +520,7 @@ What the suite checks, all automated in `tests/test_contention.py`:
 | `test_concurrent_transfers_across_many_accounts_conserve_money` | 24 transfers picked at random over 6 accounts, all in flight. The lock order and the row locks under load at once, and the ledger holds exactly one row per commit. |
 | `test_money_is_conserved_under_a_long_random_walk` | 120 sequential transfers of random amounts over 5 accounts. Every refusal has to be `InsufficientFunds`, because any other failure means a transfer died between its debit and its credit. |
 | `test_concurrent_opens_of_one_owner_leave_exactly_one_account` | 10 concurrent opens of the same owner; the unique constraint decides, nine arrive as `IntegrityError` off a rolled-back transaction, and one account exists. |
+| `test_deposits_and_withdrawals_mixed_into_the_transfer_storm_hold` | 300 transfers, deposits and withdrawals over 8 accounts, all in flight. Every other test moves money with two-row transactions; these are one-row ones queueing against them in both directions, and the assertion is the arithmetic rather than the absence of an exception. |
 
 Honest limits, since this is a POC and not a payment system:
 
@@ -847,7 +852,7 @@ indefinitely. Five seconds to acquire a lock and fifteen for a statement turn th
 ./build.sh         # venv with python3.14 and dependencies
 ./start.sh         # postgres 18 in podman, then the app on http://localhost:8000
 ./test-client.sh   # a commit and two rollbacks over HTTP, with balances after each
-./test.sh          # 175 tests against a real postgres, in a separate database
+./test.sh          # 184 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
 
@@ -900,7 +905,9 @@ tests/test_api.py::test_an_account_id_outside_the_column_range_is_rejected PASSE
 tests/test_api.py::test_an_amount_past_the_decimal_contexts_limit_is_a_bad_request PASSED
 tests/test_api.py::test_an_amount_that_is_not_a_positive_number_is_a_bad_request PASSED
 tests/test_api.py::test_an_amount_too_large_for_the_column_is_rejected PASSED
+tests/test_api.py::test_an_opening_balance_written_with_a_sign_is_a_bad_request PASSED
 tests/test_api.py::test_an_ordinary_validation_error_still_says_what_was_wrong PASSED
+tests/test_api.py::test_an_owner_carrying_a_byte_postgres_refuses_is_a_bad_request PASSED
 tests/test_api.py::test_an_owner_longer_than_the_column_is_rejected PASSED
 tests/test_api.py::test_an_owner_the_column_cannot_store_is_a_bad_request PASSED
 tests/test_api.py::test_concurrent_transfers_through_the_api_conserve_money PASSED
@@ -914,6 +921,7 @@ tests/test_api.py::test_the_readme_shows_the_decorator_that_ships PASSED
 tests/test_api.py::test_the_ui_code_blocks_show_the_service_and_dao_that_ship PASSED
 tests/test_api.py::test_the_ui_only_calls_routes_the_api_really_has PASSED
 tests/test_api.py::test_the_ui_only_touches_elements_the_page_declares PASSED
+tests/test_api.py::test_the_ui_renders_money_without_a_float_in_the_way PASSED
 tests/test_api.py::test_transfer_endpoint_moves_money_and_records_the_ledger PASSED
 tests/test_api.py::test_unknown_account_returns_not_found PASSED
 tests/test_contention.py::test_a_rolled_back_insert_really_reached_the_database PASSED
@@ -921,6 +929,7 @@ tests/test_contention.py::test_concurrent_deposits_do_not_lose_updates PASSED
 tests/test_contention.py::test_concurrent_opens_of_one_owner_leave_exactly_one_account PASSED
 tests/test_contention.py::test_concurrent_transfers_across_many_accounts_conserve_money PASSED
 tests/test_contention.py::test_concurrent_withdrawals_cannot_overdraw_the_account PASSED
+tests/test_contention.py::test_deposits_and_withdrawals_mixed_into_the_transfer_storm_hold PASSED
 tests/test_contention.py::test_money_is_conserved_around_a_cycle_of_accounts PASSED
 tests/test_contention.py::test_money_is_conserved_under_a_long_random_walk PASSED
 tests/test_contention.py::test_money_is_conserved_under_concurrent_transfers PASSED
@@ -939,13 +948,16 @@ tests/test_money.py::test_a_zero_amount_is_refused PASSED
 tests/test_money.py::test_an_amount_past_the_decimal_contexts_exponent_limit_is_refused PASSED
 tests/test_money.py::test_an_amount_the_column_cannot_hold_is_refused PASSED
 tests/test_money.py::test_an_amount_under_the_decimal_contexts_exponent_limit_is_refused PASSED
+tests/test_money.py::test_an_opening_balance_reads_back_the_way_it_was_returned PASSED
 tests/test_money.py::test_negative_zero_is_not_a_way_past_the_sign_check PASSED
+tests/test_money.py::test_negative_zero_is_not_an_opening_balance_either PASSED
 tests/test_money.py::test_the_largest_amount_the_column_can_hold_is_accepted PASSED
 tests/test_money.py::test_the_ledger_refuses_a_transfer_to_the_same_account PASSED
 tests/test_money.py::test_the_ledger_refuses_an_amount_the_bank_would_refuse PASSED
 tests/test_money.py::test_the_returned_view_is_the_value_the_database_kept PASSED
 tests/test_money.py::test_trailing_zeros_are_not_finer_than_a_cent PASSED
 tests/test_transaction_boundary.py::test_a_blank_owner_is_refused PASSED
+tests/test_transaction_boundary.py::test_a_boundary_cancelled_waiting_for_a_lock_releases_nothing_and_holds_nothing PASSED
 tests/test_transaction_boundary.py::test_a_boundary_that_only_stages_work_still_commits PASSED
 tests/test_transaction_boundary.py::test_a_boundary_that_touches_nothing_never_asks_for_a_connection PASSED
 tests/test_transaction_boundary.py::test_a_boundary_whose_only_session_call_failed_still_commits PASSED
@@ -1006,6 +1018,7 @@ tests/test_transaction_boundary.py::test_a_timeout_around_a_boundary_that_swallo
 tests/test_transaction_boundary.py::test_a_timeout_around_a_poisoned_boundary_is_still_a_timeout PASSED
 tests/test_transaction_boundary.py::test_a_transaction_ended_behind_the_boundarys_back_is_not_a_commit PASSED
 tests/test_transaction_boundary.py::test_a_transfer_to_the_same_account_is_rejected PASSED
+tests/test_transaction_boundary.py::test_a_two_phase_prepare_cannot_end_the_boundarys_transaction PASSED
 tests/test_transaction_boundary.py::test_a_write_on_a_second_connection_is_the_limit_that_stays PASSED
 tests/test_transaction_boundary.py::test_an_assignment_cannot_switch_the_block_list_off PASSED
 tests/test_transaction_boundary.py::test_an_assignment_is_refused_from_a_spawned_task PASSED
@@ -1045,6 +1058,7 @@ tests/test_transaction_boundary.py::test_the_result_object_hands_back_the_connec
 tests/test_transaction_boundary.py::test_the_schema_refuses_a_balance_that_is_not_a_number PASSED
 tests/test_transaction_boundary.py::test_the_schema_refuses_a_negative_balance PASSED
 tests/test_transaction_boundary.py::test_the_schema_refuses_an_orphan_ledger_row PASSED
+tests/test_transaction_boundary.py::test_the_service_hands_out_views_and_never_an_entity PASSED
 tests/test_transaction_boundary.py::test_the_sessionmakers_own_context_manager_is_refused PASSED
 tests/test_transaction_boundary.py::test_the_sessions_own_context_manager_is_refused PASSED
 tests/test_transaction_boundary.py::test_the_stream_refusal_cannot_be_routed_around_through_execute PASSED
@@ -1061,5 +1075,5 @@ tests/test_transaction_boundary.py::test_unexpected_rollback_names_the_exception
 tests/test_transaction_boundary.py::test_work_committed_by_a_raw_string_cannot_be_reported_as_success PASSED
 tests/test_transaction_boundary.py::test_work_spawned_inside_a_boundary_opens_its_own_transaction_after_it_ends PASSED
 
-175 passed
+184 passed
 ```

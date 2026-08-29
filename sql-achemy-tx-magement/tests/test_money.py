@@ -267,3 +267,28 @@ async def test_the_largest_amount_the_column_can_hold_is_accepted(bank: BankServ
     with pytest.raises(InvalidAmount):
         await bank.deposit(account.id, Decimal("0.01"))
     assert (await bank.get_account(account.id)).balance == largest
+
+
+async def test_negative_zero_is_not_an_opening_balance_either(bank: BankService):
+    """The sign check on an opening balance was `< 0`, which -0.00 is not, so the one
+    spelling of nothing that carries a sign got past the layer every other amount is
+    refused at. It is not a rounding curiosity: Postgres normalises the sign away, so
+    the account came back as 0.00 on every later read while the 201 that created it said
+    -0.00. One account with two balances is worse than the value itself."""
+    with pytest.raises(InvalidAmount):
+        await bank.open_account("alice", Decimal("-0.00"))
+
+    assert await bank.list_accounts() == []
+
+
+async def test_an_opening_balance_reads_back_the_way_it_was_returned(bank: BankService):
+    """The invariant the sign check exists for. What open_account() answers is built in
+    Python before the commit and what get_account() answers comes back out of Postgres,
+    so any value the column stores differently than the service holds it makes those two
+    disagree about the same account."""
+    for owner, opening in (("alice", "0.00"), ("bob", "0.01"), ("carol", "12.30")):
+        created = await bank.open_account(owner, Decimal(opening))
+
+        read = await bank.get_account(created.id)
+
+        assert str(read.balance) == str(created.balance) == opening

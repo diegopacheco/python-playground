@@ -665,7 +665,13 @@ async function call(method, path, body){
   return {status: response.status, ok: response.ok, payload: await response.json()};
 }
 
-function money(value){ return Number(value).toFixed(2); }
+const MONEY = /^([+-]?)(\d+)(?:\.(\d{0,2}))?$/;
+function money(value){
+  const text = String(value).trim();
+  const match = MONEY.exec(text);
+  if (!match) return text;
+  return (match[1] === '-' ? '-' : '') + match[2] + '.' + ((match[3] || '') + '00').slice(0, 2);
+}
 
 function snapshot(){
   return accounts.map(a => a.id + '=' + money(a.balance)).join('  ');

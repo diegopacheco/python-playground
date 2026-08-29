@@ -256,3 +256,50 @@ async def test_concurrent_opens_of_one_owner_leave_exactly_one_account(
         if isinstance(result, BaseException):
             assert isinstance(result, IntegrityError), result
     assert len(await bank.list_accounts()) == 1
+
+
+async def test_deposits_and_withdrawals_mixed_into_the_transfer_storm_hold(
+    bank: BankService,
+):
+    """Every contention test above moves money one way: transfers, or opens, but never
+    both legs of the read-modify-write on their own. deposit() and withdraw() take one
+    row where a transfer takes two, so they queue behind a transfer holding the lower id
+    and hold a row a transfer is about to want - the shape an ascending order rule is
+    not obviously enough for. Three hundred of them at once, and the arithmetic is the
+    assertion: the total has to be the opening balances plus every deposit that
+    committed minus every withdrawal that did."""
+    accounts = [
+        await bank.open_account(f"owner{index}", Decimal("1000.00")) for index in range(8)
+    ]
+    ids = [account.id for account in accounts]
+    random.seed(23)
+    plan = [(index % 4, *random.sample(ids, 2)) for index in range(300)]
+
+    async def run(kind: int, source: int, target: int):
+        if kind == 0:
+            return await bank.transfer(source, target, Decimal("1.00"))
+        if kind == 1:
+            return await bank.transfer(target, source, Decimal("1.00"))
+        if kind == 2:
+            return await bank.deposit(source, Decimal("1.00"))
+        return await bank.withdraw(source, Decimal("1.00"))
+
+    results = await asyncio.gather(
+        *(run(*step) for step in plan), return_exceptions=True
+    )
+
+    for result in results:
+        assert not isinstance(result, BaseException) or isinstance(
+            result, InsufficientFunds
+        ), result
+    committed = [
+        step
+        for step, result in zip(plan, results)
+        if not isinstance(result, BaseException)
+    ]
+    deposits = sum(1 for kind, *_ in committed if kind == 2)
+    withdrawals = sum(1 for kind, *_ in committed if kind == 3)
+    assert await total_balance(bank) == Decimal(8000 + deposits - withdrawals)
+    assert len(await bank.list_ledger()) == sum(
+        1 for kind, *_ in committed if kind in (0, 1)
+    )

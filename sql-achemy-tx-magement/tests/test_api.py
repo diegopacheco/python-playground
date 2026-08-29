@@ -660,3 +660,51 @@ async def test_an_owner_the_column_cannot_store_is_a_bad_request(
     assert response.status_code == 400
     assert "out of range" in response.json()["error"]
     assert (await client.get("/api/accounts")).json() == []
+
+
+async def test_an_opening_balance_written_with_a_sign_is_a_bad_request(
+    client: httpx.AsyncClient,
+):
+    """`-0.00` is finite, is not finer than a cent, fits the column and is not less than
+    zero, so it walked past every money check the service has and was stored. Postgres
+    then dropped the sign, and the 201 that created the account and every GET of it
+    disagreed about its balance. A body the API answers twice is worse than one it
+    refuses once."""
+    created = await client.post(
+        "/api/accounts", json={"owner": "alice", "initial_balance": "-0.00"}
+    )
+
+    assert created.status_code == 400
+    assert (await client.get("/api/accounts")).json() == []
+
+
+async def test_an_owner_carrying_a_byte_postgres_refuses_is_a_bad_request(
+    client: httpx.AsyncClient,
+):
+    """A NUL is a character JSON can carry, pydantic will hold and the column cannot
+    store, so it is refused by the driver rather than by anything that names it. That is
+    the shape the DataError handler exists for, and without it a printable owner and an
+    unprintable one differ by a 400 and a 500."""
+    response = await client.post(
+        "/api/accounts", json={"owner": "a\x00b", "initial_balance": "1.00"}
+    )
+
+    assert response.status_code == 400
+    assert (await client.get("/api/accounts")).json() == []
+
+
+async def test_the_ui_renders_money_without_a_float_in_the_way(
+    client: httpx.AsyncClient,
+):
+    """Every money value the API sends is a string of exact cents, chosen so that a
+    balance the column can hold survives the trip. The page then printed it with
+    `Number(value).toFixed(2)`, and 9999999999999999.00 - a balance this bank accepts -
+    came out as 10000000000000000.00, because the largest amount Numeric(18, 2) holds is
+    past what a double can count in. The renderer has to work on the digits it was
+    given."""
+    page = (await client.get("/")).text
+    renderer = re.search(r"function money\(value\)\{(.*?)\n\}", page, re.S).group(1)
+
+    assert "Number(" not in renderer
+    assert "parseFloat" not in renderer
+    assert "toFixed" not in renderer
