@@ -348,6 +348,45 @@ async def test_the_schema_refuses_an_orphan_ledger_row(bank: BankService):
     assert await bank.list_ledger() == []
 
 
+async def test_the_schema_refuses_a_ledger_amount_that_is_not_money(
+    bank: BankService,
+):
+    """`balance` has a backstop for a service bug and `amount` had none, so the two
+    halves of a transfer were not held to the same standard: a bug that wrote a
+    negative row moved money one way and recorded it the other. The `NaN` half is the
+    same argument that put it on `balance` - postgres orders `NaN` above every number,
+    so `amount > 0` is true for one and the check that looks like it covers the column
+    would not."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("100.00"))
+
+    @transactional
+    async def write_it(amount: Decimal) -> None:
+        await LedgerDAO().insert(source.id, target.id, amount)
+
+    for amount in (Decimal("-5.00"), Decimal("0.00"), Decimal("NaN")):
+        with pytest.raises(IntegrityError):
+            await write_it(amount)
+
+    assert await bank.list_ledger() == []
+
+
+async def test_the_schema_refuses_a_ledger_row_that_moves_nothing(bank: BankService):
+    """`_check_transfer` refuses a row saying an account paid itself, and the database
+    is where that has to hold for a bug that reaches the DAO directly - the foreign
+    keys are both satisfied by a self-transfer, so nothing else in the schema sees it."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    @transactional
+    async def pay_itself() -> None:
+        await LedgerDAO().insert(account.id, account.id, Decimal("5.00"))
+
+    with pytest.raises(IntegrityError):
+        await pay_itself()
+
+    assert await bank.list_ledger() == []
+
+
 async def test_the_schema_refuses_a_negative_balance(bank: BankService):
     account = await bank.open_account("alice", Decimal("10.00"))
 
@@ -1938,6 +1977,52 @@ async def test_business_code_that_overwrites_the_mark_is_refused_not_ignored(
 
     assert str(refused.value) == LOST_MARK
     assert await bank.list_accounts() == []
+
+
+async def test_a_boundary_that_cannot_ask_is_not_a_commit(bank: BankService):
+    """The five nets answer by asking the session, the connection and the driver, and
+    asking is itself a call that can fail. `result.connection.invalidate()` is public
+    API off the call every DAO makes, and it leaves SQLAlchemy refusing to hand the
+    connection over at all: the boundary died on a raw PendingRollbackError from the
+    middle of its own checks, which is a 500 with no diagnosis in it and the one shape
+    every other net exists to replace. A boundary that cannot ask whether its
+    transaction survived must not report the work as committed, and must say which of
+    the two happened. It also has to end like any other refusal: a connection thrown
+    away inside the boundary is the one path where a leak would be the boundary's own
+    doing, and a leak of one per call is invisible until the pool is empty."""
+
+    @transactional
+    async def wreck() -> str:
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        result = await current_session().execute(text("select 1"))
+        result.connection.invalidate()
+        return "the work is done"
+
+    for _ in range(40):
+        with pytest.raises(UnexpectedRollback) as refused:
+            await wreck()
+        assert "could not ask" in str(refused.value)
+        assert isinstance(refused.value.__cause__, InvalidRequestError)
+
+    assert engine.pool.checkedout() == 0
+    assert await bank.list_accounts() == []
+
+
+async def test_the_wrapper_invents_no_name_of_its_own():
+    """A wrapper is not allowed to be a wider door than the thing it wraps, and the
+    names it invents are the ones no audit of the session can see: `_session` and
+    `_context` were two, `__wrapped__` was a third. The helpers were three more. None
+    of them was reachable into anything - `_open` returns the moment the boundary is
+    already open - which is exactly how the other three looked before they were not.
+    Only `__getattr__` stays, because it is the hook the wrapper is rather than a name
+    it hands out."""
+    invented = {
+        name
+        for name in vars(BoundarySession)
+        if name not in dir(AsyncSession) and name != "__getattr__"
+    }
+
+    assert invented == set(), invented
 
 
 async def test_no_name_the_wrapper_keeps_shadows_a_name_the_session_has():

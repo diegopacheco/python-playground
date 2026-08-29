@@ -20,6 +20,10 @@ class Account(Base):
 
 class LedgerEntry(Base):
     __tablename__ = "ledger"
+    __table_args__ = (
+        CheckConstraint("amount > 0 and amount <> 'NaN'", name="amount_is_money"),
+        CheckConstraint("source_id <> target_id", name="two_different_accounts"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))

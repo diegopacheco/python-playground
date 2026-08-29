@@ -29,6 +29,10 @@ LOST_MARK = (
     "the mark the boundary set on its transaction is gone, so that transaction ended "
     "and postgres is in another one"
 )
+UNVERIFIABLE = (
+    "the boundary could not ask whether its transaction was still open, so it cannot "
+    "report the work as committed"
+)
 MARK = "application_name"
 NOT_YOURS_TO_CLOSE = (
     "the session's own context manager closes it on exit; @transactional opened this "
@@ -147,6 +151,41 @@ def _named(wrapper: Any, attribute: Any) -> Any:
     return wrapper
 
 
+def _guard(wrapper: Any) -> None:
+    context = _held_by(wrapper)[1]
+    if context.closed:
+        raise NoActiveTransaction(
+            "the transaction this session belonged to has already ended"
+        )
+    _check_task(context)
+
+
+def _refuse(name: str) -> None:
+    _hide(name)
+    if name in OWNED_BY_THE_BOUNDARY:
+        raise TransactionNotYours(
+            f"{name} belongs to @transactional, not to the code inside it"
+        )
+    if name in UNGUARDABLE:
+        raise TransactionNotYours(
+            f"{name}() raises from the cursor while the result is iterated, where "
+            "the boundary cannot see it; use execute() so a failure poisons the "
+            "transaction instead of being committed over"
+        )
+
+
+async def _open(wrapper: Any) -> None:
+    session, context = _held_by(wrapper)
+    if context.driver is not None:
+        return
+    connection = await session.connection()
+    mark = f"boundary-{next(_boundaries)}"
+    await connection.exec_driver_sql(f"set local {MARK} = '{mark}'")
+    context.transaction = connection.get_transaction()
+    context.driver = _driver_of(connection)
+    context.mark = mark
+
+
 class BoundaryContext:
     def __init__(self, manager: Any, boundary: "BoundarySession") -> None:
         object.__setattr__(self, HELD, (manager, boundary))
@@ -163,7 +202,7 @@ class BoundaryContext:
 
     def __enter__(self) -> Any:
         manager, boundary = _held_by(self)
-        boundary._guard()
+        _guard(boundary)
         entered = manager.__enter__()
         if isinstance(entered, (Session, AsyncSession)):
             return boundary
@@ -190,38 +229,6 @@ class BoundarySession:
     def __getstate__(self) -> NoReturn:
         _refuse_state()
 
-    def _guard(self) -> None:
-        context = _held_by(self)[1]
-        if context.closed:
-            raise NoActiveTransaction(
-                "the transaction this session belonged to has already ended"
-            )
-        _check_task(context)
-
-    def _refuse(self, name: str) -> None:
-        _hide(name)
-        if name in OWNED_BY_THE_BOUNDARY:
-            raise TransactionNotYours(
-                f"{name} belongs to @transactional, not to the code inside it"
-            )
-        if name in UNGUARDABLE:
-            raise TransactionNotYours(
-                f"{name}() raises from the cursor while the result is iterated, where "
-                "the boundary cannot see it; use execute() so a failure poisons the "
-                "transaction instead of being committed over"
-            )
-
-    async def _open(self) -> None:
-        session, context = _held_by(self)
-        if context.driver is not None:
-            return
-        connection = await session.connection()
-        mark = f"boundary-{next(_boundaries)}"
-        await connection.exec_driver_sql(f"set local {MARK} = '{mark}'")
-        context.transaction = connection.get_transaction()
-        context.driver = _driver_of(connection)
-        context.mark = mark
-
     async def __aenter__(self) -> "BoundarySession":
         raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
 
@@ -229,26 +236,26 @@ class BoundarySession:
         raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
 
     def __contains__(self, instance: Any) -> bool:
-        self._guard()
+        _guard(self)
         return instance in _held_by(self)[0]
 
     def __iter__(self) -> Any:
-        self._guard()
+        _guard(self)
         return iter(_held_by(self)[0])
 
     def __setattr__(self, name: str, value: Any) -> None:
-        self._guard()
-        self._refuse(name)
+        _guard(self)
+        _refuse(name)
         setattr(_held_by(self)[0], name, value)
 
     def __delattr__(self, name: str) -> None:
-        self._guard()
-        self._refuse(name)
+        _guard(self)
+        _refuse(name)
         delattr(_held_by(self)[0], name)
 
     def __getattr__(self, name: str) -> Any:
-        self._guard()
-        self._refuse(name)
+        _guard(self)
+        _refuse(name)
         attribute = getattr(_held_by(self)[0], name)
         if not inspect.isroutine(attribute):
             if _is_context_manager(attribute):
@@ -257,16 +264,16 @@ class BoundarySession:
         if not inspect.iscoroutinefunction(attribute):
 
             def checked(*args: Any, **kwargs: Any) -> Any:
-                self._guard()
+                _guard(self)
                 return getattr(_held_by(self)[0], name)(*args, **kwargs)
 
             return _named(checked, attribute)
 
         async def guarded(*args: Any, **kwargs: Any) -> Any:
-            self._guard()
+            _guard(self)
             context = _held_by(self)[1]
             try:
-                await self._open()
+                await _open(self)
                 answer = await getattr(_held_by(self)[0], name)(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
                 if context.failure is None:
@@ -315,6 +322,35 @@ async def _leave_no_transaction_open(context: "TransactionContext") -> None:
         await greenlet_spawn(driver.rollback)
 
 
+async def _nothing_ended_the_transaction(
+    session: AsyncSession, context: "TransactionContext"
+) -> None:
+    transaction = session.get_transaction()
+    if transaction is None or not transaction.is_active:
+        raise UnexpectedRollback(LOST_TRANSACTION)
+    connection = await session.connection()
+    if not connection.in_transaction():
+        raise UnexpectedRollback(LOST_CONNECTION)
+    if connection.get_transaction() is not context.transaction:
+        raise UnexpectedRollback(SPLIT_CONNECTION)
+    driver = _driver_of(connection)
+    if driver is not context.driver or not _in_transaction(driver):
+        raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
+    if _mark_of(driver) != context.mark:
+        raise UnexpectedRollback(LOST_MARK)
+
+
+async def _still_committable(
+    session: AsyncSession, context: "TransactionContext"
+) -> None:
+    try:
+        await _nothing_ended_the_transaction(session, context)
+    except (UnexpectedRollback, DBAPIError):
+        raise
+    except Exception as error:
+        raise UnexpectedRollback(UNVERIFIABLE) from error
+
+
 def _rollback_only(failure: BaseException) -> NoReturn:
     task = _running_task()
     cancelled = isinstance(failure, asyncio.CancelledError)
@@ -344,7 +380,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
             token = _current.set(context)
             try:
                 async with session.begin():
-                    await context.session._open()
+                    await _open(context.session)
                     try:
                         result = await func(*args, **kwargs)
                     except BaseException as error:
@@ -355,19 +391,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         _rollback_only(context.failure)
                     if context.failure is not None:
                         _rollback_only(context.failure)
-                    transaction = session.get_transaction()
-                    if transaction is None or not transaction.is_active:
-                        raise UnexpectedRollback(LOST_TRANSACTION)
-                    connection = await session.connection()
-                    if not connection.in_transaction():
-                        raise UnexpectedRollback(LOST_CONNECTION)
-                    if connection.get_transaction() is not context.transaction:
-                        raise UnexpectedRollback(SPLIT_CONNECTION)
-                    driver = _driver_of(connection)
-                    if driver is not context.driver or not _in_transaction(driver):
-                        raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
-                    if _mark_of(driver) != context.mark:
-                        raise UnexpectedRollback(LOST_MARK)
+                    await _still_committable(session, context)
                     return result
             finally:
                 context.closed = True

@@ -44,7 +44,7 @@ For the default Spring settings, yes on everything that matters. The differences
 | Statement cancelled inside a DAO call, caller swallows it | no equivalent; a thread interrupt is not a rollback signal | rollback-only, the session records the `CancelledError` |
 | Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task or `to_thread()` worker is refused the inherited session, and refused the captured one |
 | Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the session recorded the `DBAPIError` that poisoned it |
-| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session name that could, `run_sync`, `_proxied`, `object_session`, `_proxy_objects`, `_maker_context_manager`, `get_bind` and `bind` included, on reads, assignments and deletions alike, and on what an allowed name carries: `no_autoflush` hands out a wrapper rather than the sync `Session` it yields; a commit through the `Connection` a result object carries is caught at the end as `UnexpectedRollback`, by identity and not merely by "some transaction is open", and one made on psycopg's own connection under it, or as a raw `COMMIT` or `ROLLBACK` string, is caught by asking the driver, which the boundary marks its transaction with so that a string ending one transaction and opening another in its place cannot pass for the first; reaching around it through `_session` or `_context`, or onto a second connection, still works |
+| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session name that could, `run_sync`, `_proxied`, `object_session`, `_proxy_objects`, `_maker_context_manager`, `get_bind` and `bind` included, on reads, assignments and deletions alike, and on what an allowed name carries: `no_autoflush` hands out a wrapper rather than the sync `Session` it yields; a commit through the `Connection` a result object carries is caught at the end as `UnexpectedRollback`, by identity and not merely by "some transaction is open", and one made on psycopg's own connection under it, or as a raw `COMMIT` or `ROLLBACK` string, is caught by asking the driver, which the boundary marks its transaction with so that a string ending one transaction and opening another in its place cannot pass for the first; a check the boundary cannot get an answer to at all is an `UnexpectedRollback` naming that rather than the SQLAlchemy state error underneath it; reaching onto a second connection still works |
 | Connection given back after a failure | the pool resets it | the same, plus a rollback the boundary sends itself when postgres is still inside the transaction it opened |
 | `REQUIRES_NEW`, `NESTED`, `SUPPORTS`, `MANDATORY` | supported | not implemented |
 | `readOnly`, `isolation`, `timeout` | supported | not implemented |
@@ -395,6 +395,19 @@ committed. The mark goes on before any of the code inside runs now. It costs a c
 boundary that refuses a request before it reads anything, and it buys five nets that are armed for every line inside
 one — which is the trade this whole section is about, so it is the one to make.
 
+Every one of those nets answers by *calling* something — the session, the connection, the driver — and a call can fail
+rather than answer. `result.connection.invalidate()` is public API off the same result object the third net exists
+for, and it does not end the transaction, it throws the connection away: SQLAlchemy then refuses to hand that
+connection over at all, so the boundary died on a raw `PendingRollbackError` raised from the middle of its own checks.
+That is the exact shape every net above was written to replace, arriving from inside the replacement — an unhandled
+`500` with no diagnosis in it, because nothing in the controller has a handler for a SQLAlchemy state error. A
+boundary that cannot find out whether its transaction survived is a boundary that must not report the work as
+committed, so an unanswerable check is a refusal that names itself and carries the state error as its `__cause__`. A
+`DBAPIError` is the one thing that passes through untouched: the database answering "I am gone" is already something
+the caller can act on, and the controller already turns it into a `503`.
+`test_a_boundary_that_cannot_ask_is_not_a_commit` pins both halves, and it does forty of them in a row, because a
+connection thrown away inside the boundary is the one path where a leak would be the boundary's own doing.
+
 Commit and rollback themselves come from `async with session.begin()`. SQLAlchemy commits on a clean exit and rolls back
 on any exception, so the decorator has no `try/except` around business logic and never swallows an error.
 
@@ -403,15 +416,15 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **One decorator marks the boundary** — `@transactional` on a service method is the only transaction code in the project.
 - **Automatic propagation** — a nested call, including a call into a different service, joins the caller's transaction instead of opening a second one.
 - **Rollback-only participation** — a failed joined call poisons the transaction, so swallowing the exception cannot produce a half-committed transfer.
-- **A returned boundary really committed** — five nets, not one. Any `DBAPIError` or `CancelledError` off the session poisons the transaction even if the caller swallows it; a deactivated `SessionTransaction` is caught before the commit; and the connection underneath is asked too, because a transaction ended there leaves the session still reporting `is_active`. The third net asks for the *identity* of the transaction it started, not merely whether one is open, because a single session call after a split autobegins another one and hides it. The fourth asks the driver, because everything above it asks SQLAlchemy and a raw `COMMIT` or `ROLLBACK` string is defined by going around SQLAlchemy: psycopg tracks the transaction status of the socket. And the fifth marks the transaction on the way in with a `SET LOCAL` that Postgres discards when that transaction ends and reports the discarding, because a status only ever answers whether *a* transaction is open — a raw `COMMIT` as the first statement, or a `COMMIT; BEGIN` in one string, leaves a replacement open for the status to find. All five are armed before the first line of business code runs, not on the first async session call it happens to make: `session.add()` is sync, so a boundary that had only staged work carried no mark at all, and SQLAlchemy's own `async_object_session()` turns the entity it just staged back into the raw `AsyncSession` — a `COMMIT` through that one landed on a transaction nothing was watching and survived the rollback that followed. The one call that could not be watched at all, `stream()`, is refused rather than left open as a hole.
-- **The wrapper is not a wider door than the session** — every name a DAO can reach on a `BoundarySession` is a name the `AsyncSession` also has, and the last escapes were the ones the wrapper invented for itself. It kept the session and the transaction as `_session` and `_context`: reading one handed the session back, writing to the other switched the nets off from inside the boundary, and `vars()`, `__dict__` and `__reduce_ex__` reached both without typing either name. `functools.wraps` was the same mistake a layer down — `session.execute.__wrapped__` was the *unguarded* bound method under a documented name, and an `INSERT` and a raw `COMMIT` through it were invisible. One hidden name holds both now, `__getstate__` refuses the copy protocol that reads the instance dictionary in C rather than through the attribute hook, the guarded calls look their method up by name instead of closing over it, and `__dir__` answers with the session's names so that hiding `__dict__` does not break `dir()`.
+- **A returned boundary really committed** — five nets, not one. Any `DBAPIError` or `CancelledError` off the session poisons the transaction even if the caller swallows it; a deactivated `SessionTransaction` is caught before the commit; and the connection underneath is asked too, because a transaction ended there leaves the session still reporting `is_active`. The third net asks for the *identity* of the transaction it started, not merely whether one is open, because a single session call after a split autobegins another one and hides it. The fourth asks the driver, because everything above it asks SQLAlchemy and a raw `COMMIT` or `ROLLBACK` string is defined by going around SQLAlchemy: psycopg tracks the transaction status of the socket. And the fifth marks the transaction on the way in with a `SET LOCAL` that Postgres discards when that transaction ends and reports the discarding, because a status only ever answers whether *a* transaction is open — a raw `COMMIT` as the first statement, or a `COMMIT; BEGIN` in one string, leaves a replacement open for the status to find. All five are armed before the first line of business code runs, not on the first async session call it happens to make: `session.add()` is sync, so a boundary that had only staged work carried no mark at all, and SQLAlchemy's own `async_object_session()` turns the entity it just staged back into the raw `AsyncSession` — a `COMMIT` through that one landed on a transaction nothing was watching and survived the rollback that followed. The one call that could not be watched at all, `stream()`, is refused rather than left open as a hole. And all five answer by calling something, so a check that cannot get an answer — `result.connection.invalidate()` throws the connection away and SQLAlchemy then refuses to hand it over — is a named `UnexpectedRollback` carrying the state error as its `__cause__`, rather than the raw `PendingRollbackError` the boundary used to die on from the middle of its own checks.
+- **The wrapper is not a wider door than the session** — every name a DAO can reach on a `BoundarySession` is a name the `AsyncSession` also has, and the last escapes were the ones the wrapper invented for itself. It kept the session and the transaction as `_session` and `_context`: reading one handed the session back, writing to the other switched the nets off from inside the boundary, and `vars()`, `__dict__` and `__reduce_ex__` reached both without typing either name. `functools.wraps` was the same mistake a layer down — `session.execute.__wrapped__` was the *unguarded* bound method under a documented name, and an `INSERT` and a raw `COMMIT` through it were invisible. One hidden name holds both now, `__getstate__` refuses the copy protocol that reads the instance dictionary in C rather than through the attribute hook, the guarded calls look their method up by name instead of closing over it, and `__dir__` answers with the session's names so that hiding `__dict__` does not break `dir()`. The helpers were the last three of the same kind: `_guard`, `_refuse` and `_open` lived on the class, so `current_session()._open` was a name no `AsyncSession` has and the rule was true in prose and false in fact. None of them reached anything — `_open` returns the moment the boundary is already open, and an assignment to either of the others lands on the session rather than on the wrapper — which is exactly how `_session` and `_context` looked until they did not. They are module functions now, and `test_the_wrapper_invents_no_name_of_its_own` is what fails on the next one. Only `__getattr__` stays, because it is the hook the wrapper *is* rather than a name it hands out.
 - **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `reset`, `invalidate`, `connection`, `get_bind`, `bind`, `get_transaction`, `get_nested_transaction`, `identity_map`, `sync_session`, `run_sync`, `_proxied`, `_proxy_objects`, `object_session`, `_maker_context_manager` and `stream` raise instead of splitting the boundary or hiding a failure, and the wrapper dies with its boundary. Every route runs the same list: the lookup, an assignment, and the session's own `async with`, because a name check that only covers reads leaves a write and a syntax open. The special methods the session really has are defined on the wrapper rather than left to `__getattr__`, which never sees them: `entity in session` and `list(session)` are resolved on the type, so both used to be a `TypeError` naming the wrapper — the wrapper breaking a session API instead of passing it through, which is the one thing this design is not allowed to do — and a test now walks every one the session defines. `run_sync`, `_proxied`, `object_session` and `_proxy_objects` are in that list because they are four more names for the same sync `Session` that `sync_session` is refused for, and `bind` because it is a second name for the `Engine` that `get_bind` is refused for — one that never appears in `dir()`, so an audit of the class misses it. A deletion runs the list too, because a read and a write are only two of the three ways at an attribute. The context managers the session hands out are wrapped rather than refused, because `no_autoflush` yields the sync `Session` and carries it in its generator frame — a sixth name for the object the other five are refused for, and one no list of session names can reach. A test walks every name the session really has, follows the frames and enters what it can, rather than trusting the list, and a second one calls every name that needs no arguments and looks inside what comes back, because `_maker_context_manager` is a name whose danger is in what it returns rather than in what it is: the call behind `async_sessionmaker.begin()`, handing out the raw `AsyncSession`, a transaction on entry and a closed session on exit.
 - **Contention handled with row locks** — `SELECT ... FOR UPDATE` serialises the read-modify-write per account, so concurrent deposits cannot lose updates.
 - **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, and a ledger entry takes the same lock before its foreign keys do, so no two writers queue in opposite orders.
 - **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused with a `400` or a `422` and never a `500`, on the string spellings and on the JSON numbers `1e999` and `NaN` alike, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money. The size check is `copy_abs()` and not `abs()`, because `abs()` reads the decimal context and raises `Overflow` for an exponent past `Emax` instead of answering, which turned an amount the column obviously cannot hold into a `500`. The sign check on an opening balance is `is_signed()` and not `< 0`, because `-0.00` is not less than zero: it walked past every money check the service has, went into the column, and came back out of Postgres as `0.00` — the `201` that created the account and every `GET` of it disagreeing about its balance. An account the API answers twice is a worse bug than the value that caused it, and `test_negative_zero_is_not_an_opening_balance_either` and `test_an_opening_balance_reads_back_the_way_it_was_returned` pin both halves.
 - **Invisible session** — controller, DAO and models never take, pass or close a session; `current_session()` finds it.
 - **Rollback proven against real Postgres** — the ledger row is flushed before the money moves, so a failure rolls back a write that already reached the database.
-- **The database enforces it too** — `CHECK (balance >= 0 and balance <> 'NaN')` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind. The `NaN` half is not decoration: postgres orders `NaN` above every number, so `balance >= 0` is *true* for one and the check that looks like it covers the column did not. A balance the bank cannot compare is worse than a negative one — every read-then-write raises out of the decimal module instead of being refused by anything that names it.
+- **The database enforces it too** — `CHECK (balance >= 0 and balance <> 'NaN')` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind. The `NaN` half is not decoration: postgres orders `NaN` above every number, so `balance >= 0` is *true* for one and the check that looks like it covers the column did not. A balance the bank cannot compare is worse than a negative one — every read-then-write raises out of the decimal module instead of being refused by anything that names it. `ledger` had no check of its own, which meant the two halves of a transfer were not held to the same standard: a service bug that wrote a negative row moved the money one way and recorded it the other, and the foreign keys are both satisfied by a row saying an account paid itself. `CHECK (amount > 0 and amount <> 'NaN')` and `CHECK (source_id <> target_id)` are what `_check_amount()` and `_check_transfer()` look like at the layer below the service, and the `NaN` half is on the ledger for the reason it is on the balance — postgres orders `NaN` above every number, so `amount > 0` is true for one. Infinity needs no clause on either column: the typmod refuses it, because a field with precision 18 cannot hold an infinite value.
 - **Bounded waiting** — `lock_timeout` and `statement_timeout` are set on every connection, so a stalled transaction cannot block a hot account forever, and a request that cannot get a connection out of the pool gives up rather than queueing behind it. All three surface as `503` rather than a hang, and all three have a test that holds the resource and asks for it over HTTP; the pool one needs a handler of its own, because SQLAlchemy's `TimeoutError` is not an `OperationalError`.
 - **Frozen views cross the boundary** — the service returns dataclasses, never ORM entities, so nothing detached ever reaches the controller.
 - **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it. The refusal is on the lookup, on the wrapper, on an assignment through it, on a deletion through it, and inside every call the wrapper hands out, so capturing the session, capturing one of its methods, setting a flag on it, or gathering two calls made on the right task are all refused rather than committed. A task that outlives the boundary gets a transaction of its own instead, because the lookup asks whether the transaction ended before it asks whose task this is.
@@ -638,6 +651,41 @@ def _named(wrapper: Any, attribute: Any) -> Any:
     return wrapper
 
 
+def _guard(wrapper: Any) -> None:
+    context = _held_by(wrapper)[1]
+    if context.closed:
+        raise NoActiveTransaction(
+            "the transaction this session belonged to has already ended"
+        )
+    _check_task(context)
+
+
+def _refuse(name: str) -> None:
+    _hide(name)
+    if name in OWNED_BY_THE_BOUNDARY:
+        raise TransactionNotYours(
+            f"{name} belongs to @transactional, not to the code inside it"
+        )
+    if name in UNGUARDABLE:
+        raise TransactionNotYours(
+            f"{name}() raises from the cursor while the result is iterated, where "
+            "the boundary cannot see it; use execute() so a failure poisons the "
+            "transaction instead of being committed over"
+        )
+
+
+async def _open(wrapper: Any) -> None:
+    session, context = _held_by(wrapper)
+    if context.driver is not None:
+        return
+    connection = await session.connection()
+    mark = f"boundary-{next(_boundaries)}"
+    await connection.exec_driver_sql(f"set local {MARK} = '{mark}'")
+    context.transaction = connection.get_transaction()
+    context.driver = _driver_of(connection)
+    context.mark = mark
+
+
 class BoundaryContext:
     def __init__(self, manager: Any, boundary: "BoundarySession") -> None:
         object.__setattr__(self, HELD, (manager, boundary))
@@ -654,7 +702,7 @@ class BoundaryContext:
 
     def __enter__(self) -> Any:
         manager, boundary = _held_by(self)
-        boundary._guard()
+        _guard(boundary)
         entered = manager.__enter__()
         if isinstance(entered, (Session, AsyncSession)):
             return boundary
@@ -681,38 +729,6 @@ class BoundarySession:
     def __getstate__(self) -> NoReturn:
         _refuse_state()
 
-    def _guard(self) -> None:
-        context = _held_by(self)[1]
-        if context.closed:
-            raise NoActiveTransaction(
-                "the transaction this session belonged to has already ended"
-            )
-        _check_task(context)
-
-    def _refuse(self, name: str) -> None:
-        _hide(name)
-        if name in OWNED_BY_THE_BOUNDARY:
-            raise TransactionNotYours(
-                f"{name} belongs to @transactional, not to the code inside it"
-            )
-        if name in UNGUARDABLE:
-            raise TransactionNotYours(
-                f"{name}() raises from the cursor while the result is iterated, where "
-                "the boundary cannot see it; use execute() so a failure poisons the "
-                "transaction instead of being committed over"
-            )
-
-    async def _open(self) -> None:
-        session, context = _held_by(self)
-        if context.driver is not None:
-            return
-        connection = await session.connection()
-        mark = f"boundary-{next(_boundaries)}"
-        await connection.exec_driver_sql(f"set local {MARK} = '{mark}'")
-        context.transaction = connection.get_transaction()
-        context.driver = _driver_of(connection)
-        context.mark = mark
-
     async def __aenter__(self) -> "BoundarySession":
         raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
 
@@ -720,26 +736,26 @@ class BoundarySession:
         raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
 
     def __contains__(self, instance: Any) -> bool:
-        self._guard()
+        _guard(self)
         return instance in _held_by(self)[0]
 
     def __iter__(self) -> Any:
-        self._guard()
+        _guard(self)
         return iter(_held_by(self)[0])
 
     def __setattr__(self, name: str, value: Any) -> None:
-        self._guard()
-        self._refuse(name)
+        _guard(self)
+        _refuse(name)
         setattr(_held_by(self)[0], name, value)
 
     def __delattr__(self, name: str) -> None:
-        self._guard()
-        self._refuse(name)
+        _guard(self)
+        _refuse(name)
         delattr(_held_by(self)[0], name)
 
     def __getattr__(self, name: str) -> Any:
-        self._guard()
-        self._refuse(name)
+        _guard(self)
+        _refuse(name)
         attribute = getattr(_held_by(self)[0], name)
         if not inspect.isroutine(attribute):
             if _is_context_manager(attribute):
@@ -748,16 +764,16 @@ class BoundarySession:
         if not inspect.iscoroutinefunction(attribute):
 
             def checked(*args: Any, **kwargs: Any) -> Any:
-                self._guard()
+                _guard(self)
                 return getattr(_held_by(self)[0], name)(*args, **kwargs)
 
             return _named(checked, attribute)
 
         async def guarded(*args: Any, **kwargs: Any) -> Any:
-            self._guard()
+            _guard(self)
             context = _held_by(self)[1]
             try:
-                await self._open()
+                await _open(self)
                 answer = await getattr(_held_by(self)[0], name)(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
                 if context.failure is None:
@@ -775,6 +791,35 @@ async def _leave_no_transaction_open(context: "TransactionContext") -> None:
         return
     if _mark_of(driver) == context.mark:
         await greenlet_spawn(driver.rollback)
+
+
+async def _nothing_ended_the_transaction(
+    session: AsyncSession, context: "TransactionContext"
+) -> None:
+    transaction = session.get_transaction()
+    if transaction is None or not transaction.is_active:
+        raise UnexpectedRollback(LOST_TRANSACTION)
+    connection = await session.connection()
+    if not connection.in_transaction():
+        raise UnexpectedRollback(LOST_CONNECTION)
+    if connection.get_transaction() is not context.transaction:
+        raise UnexpectedRollback(SPLIT_CONNECTION)
+    driver = _driver_of(connection)
+    if driver is not context.driver or not _in_transaction(driver):
+        raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
+    if _mark_of(driver) != context.mark:
+        raise UnexpectedRollback(LOST_MARK)
+
+
+async def _still_committable(
+    session: AsyncSession, context: "TransactionContext"
+) -> None:
+    try:
+        await _nothing_ended_the_transaction(session, context)
+    except (UnexpectedRollback, DBAPIError):
+        raise
+    except Exception as error:
+        raise UnexpectedRollback(UNVERIFIABLE) from error
 
 
 def _rollback_only(failure: BaseException) -> NoReturn:
@@ -806,7 +851,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
             token = _current.set(context)
             try:
                 async with session.begin():
-                    await context.session._open()
+                    await _open(context.session)
                     try:
                         result = await func(*args, **kwargs)
                     except BaseException as error:
@@ -817,19 +862,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         _rollback_only(context.failure)
                     if context.failure is not None:
                         _rollback_only(context.failure)
-                    transaction = session.get_transaction()
-                    if transaction is None or not transaction.is_active:
-                        raise UnexpectedRollback(LOST_TRANSACTION)
-                    connection = await session.connection()
-                    if not connection.in_transaction():
-                        raise UnexpectedRollback(LOST_CONNECTION)
-                    if connection.get_transaction() is not context.transaction:
-                        raise UnexpectedRollback(SPLIT_CONNECTION)
-                    driver = _driver_of(connection)
-                    if driver is not context.driver or not _in_transaction(driver):
-                        raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
-                    if _mark_of(driver) != context.mark:
-                        raise UnexpectedRollback(LOST_MARK)
+                    await _still_committable(session, context)
                     return result
             finally:
                 context.closed = True
@@ -927,7 +960,7 @@ indefinitely. Five seconds to acquire a lock and fifteen for a statement turn th
 ./build.sh         # venv with python3.14 and dependencies
 ./start.sh         # postgres 18 in podman, then the app on http://localhost:8000
 ./test-client.sh   # a commit and two rollbacks over HTTP, with balances after each
-./test.sh          # 192 tests against a real postgres, in a separate database
+./test.sh          # 196 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
 
@@ -1035,6 +1068,7 @@ tests/test_money.py::test_trailing_zeros_are_not_finer_than_a_cent PASSED
 tests/test_transaction_boundary.py::test_a_blank_owner_is_refused PASSED
 tests/test_transaction_boundary.py::test_a_boundary_cancelled_waiting_for_a_lock_releases_nothing_and_holds_nothing PASSED
 tests/test_transaction_boundary.py::test_a_boundary_marks_its_transaction_before_the_code_inside_it_runs PASSED
+tests/test_transaction_boundary.py::test_a_boundary_that_cannot_ask_is_not_a_commit PASSED
 tests/test_transaction_boundary.py::test_a_boundary_that_only_stages_work_still_commits PASSED
 tests/test_transaction_boundary.py::test_a_boundary_whose_only_session_call_failed_still_commits PASSED
 tests/test_transaction_boundary.py::test_a_call_the_wrapper_hands_out_is_not_a_handle_on_the_one_it_wraps PASSED
@@ -1137,6 +1171,8 @@ tests/test_transaction_boundary.py::test_the_pickle_protocol_does_not_hand_the_s
 tests/test_transaction_boundary.py::test_the_proxy_registry_is_a_fifth_name_for_the_sync_session PASSED
 tests/test_transaction_boundary.py::test_the_result_object_hands_back_the_connection_under_the_boundary PASSED
 tests/test_transaction_boundary.py::test_the_schema_refuses_a_balance_that_is_not_a_number PASSED
+tests/test_transaction_boundary.py::test_the_schema_refuses_a_ledger_amount_that_is_not_money PASSED
+tests/test_transaction_boundary.py::test_the_schema_refuses_a_ledger_row_that_moves_nothing PASSED
 tests/test_transaction_boundary.py::test_the_schema_refuses_a_negative_balance PASSED
 tests/test_transaction_boundary.py::test_the_schema_refuses_an_orphan_ledger_row PASSED
 tests/test_transaction_boundary.py::test_the_service_hands_out_views_and_never_an_entity PASSED
@@ -1148,6 +1184,7 @@ tests/test_transaction_boundary.py::test_the_three_names_for_the_sync_session_ar
 tests/test_transaction_boundary.py::test_the_words_for_commit_and_rollback_are_not_what_is_watched PASSED
 tests/test_transaction_boundary.py::test_the_wrapper_answers_dir_the_way_the_session_does PASSED
 tests/test_transaction_boundary.py::test_the_wrapper_hides_the_one_name_it_keeps_for_itself PASSED
+tests/test_transaction_boundary.py::test_the_wrapper_invents_no_name_of_its_own PASSED
 tests/test_transaction_boundary.py::test_transaction_context_is_cleared_after_the_boundary_returns PASSED
 tests/test_transaction_boundary.py::test_transactional_refuses_a_callable_that_is_not_a_function PASSED
 tests/test_transaction_boundary.py::test_transactional_refuses_a_function_that_is_not_async PASSED
@@ -1158,5 +1195,5 @@ tests/test_transaction_boundary.py::test_unexpected_rollback_names_the_exception
 tests/test_transaction_boundary.py::test_work_committed_by_a_raw_string_cannot_be_reported_as_success PASSED
 tests/test_transaction_boundary.py::test_work_spawned_inside_a_boundary_opens_its_own_transaction_after_it_ends PASSED
 
-192 passed
+196 passed
 ```
