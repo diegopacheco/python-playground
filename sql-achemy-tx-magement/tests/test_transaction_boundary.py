@@ -2033,3 +2033,124 @@ async def test_a_cancellation_racing_the_commit_cannot_split_a_transfer(
     assert accounts["bob"] == Decimal(committed)
     assert accounts["alice"] + accounts["bob"] == Decimal("100.00")
     assert returned <= committed
+
+
+async def test_the_sessionmakers_own_context_manager_is_refused(bank: BankService):
+    """_maker_context_manager is what async_sessionmaker.begin() runs, and it is a name
+    on the session like any other. What it hands back holds the raw AsyncSession, opens
+    a transaction on entry and closes the session on exit, so it is begin and close
+    under a name the list did not have. It was already impossible, but only by accident
+    - SQLAlchemy answers a second begin() with a raw InvalidRequestError - and a
+    refusal by accident is not an answer the caller can act on, which is the same
+    argument that put the session's own async with on the list."""
+
+    @transactional
+    async def through_the_maker() -> str:
+        session = current_session()
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        async with session._maker_context_manager():
+            pass
+        return "success"
+
+    with pytest.raises(TransactionNotYours) as refused:
+        await through_the_maker()
+
+    assert "_maker_context_manager" in str(refused.value)
+    assert await bank.list_accounts() == []
+
+
+async def test_no_call_on_the_wrapper_hands_back_the_engine_or_the_sync_session(
+    bank: BankService,
+):
+    """The audit next door walks what every name is and could not see what a name does.
+    _maker_context_manager is a routine, so the sweep read a function object and moved
+    on, while calling it handed back an object holding the AsyncSession itself. This
+    calls every name that needs no arguments and looks inside what comes back, through
+    its __dict__ and its __slots__, so the next name of that shape is a failing test
+    rather than a paragraph."""
+
+    def takes_no_arguments(value: Any) -> bool:
+        try:
+            parameters = inspect.signature(value).parameters.values()
+        except (TypeError, ValueError):
+            return False
+        return all(
+            parameter.default is not inspect.Parameter.empty
+            or parameter.kind
+            in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            for parameter in parameters
+        )
+
+    def held(value: Any) -> list[Any]:
+        names = list(getattr(type(value), "__slots__", ()))
+        names += list(getattr(value, "__dict__", {}))
+        found = []
+        for name in names:
+            try:
+                found.append(getattr(value, name))
+            except BaseException:
+                pass
+        return found
+
+    @transactional
+    async def sweep() -> list[str]:
+        wrapper = current_session()
+        escapes = (
+            Engine,
+            AsyncEngine,
+            Session,
+            AsyncSession,
+            Connection,
+            AsyncConnection,
+            Transaction,
+            SessionTransaction,
+        )
+        leaked = []
+        for name in dir(wrapper._session):
+            if name.startswith("__"):
+                continue
+            try:
+                value = getattr(wrapper, name)
+            except (TransactionNotYours, AttributeError):
+                continue
+            if not (inspect.isroutine(value) and takes_no_arguments(value)):
+                continue
+            try:
+                answer = value()
+                if inspect.isawaitable(answer):
+                    answer = await answer
+            except BaseException:
+                continue
+            if any(isinstance(one, escapes) for one in [answer] + held(answer)):
+                leaked.append(name)
+        return leaked
+
+    assert await sweep() == []
+
+
+async def test_a_mark_put_back_by_hand_is_the_limit_the_mark_leaves_open(
+    bank: BankService,
+):
+    """The mark answers whether postgres is still in the transaction the boundary
+    opened, and it answers it by reading a value the transaction carries. SHOW hands
+    that value to the code inside the boundary, so code that ends the transaction and
+    sets the same application_name on the one it opens in its place puts every net back
+    the way it found them: SQLAlchemy was never told, the connection holds the
+    transaction object the boundary recorded, the driver reports INTRANS, and the mark
+    reads back as the boundary's own. The row the raw COMMIT wrote survives and the
+    boundary calls it a success. It is the same kind of limit _session is: a guard
+    against a mistake cannot survive code that is aiming at it, and a suite that only
+    showed what is caught would leave the reader thinking otherwise."""
+
+    @transactional
+    async def forge_the_mark() -> str:
+        session = current_session()
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        mark = (await session.execute(text("show application_name"))).scalar_one()
+        await session.execute(
+            text(f"commit; begin; set local application_name = '{mark}'")
+        )
+        return "success"
+
+    assert await forge_the_mark() == "success"
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]

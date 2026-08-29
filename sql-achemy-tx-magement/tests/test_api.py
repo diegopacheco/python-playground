@@ -529,3 +529,35 @@ async def test_the_ui_only_touches_elements_the_page_declares(
     assert reached
     assert filled
     assert (reached | filled) <= declared
+
+
+async def test_the_readme_counts_the_contention_tests_that_exist():
+    """The paragraph under the contention run sells a number the way the test listing
+    does, and it had drifted the same way: it said seven passes while eleven tests were
+    in the file, and it printed four failures for a run that now produces six. A number
+    in prose is a claim, and one nobody checks goes stale the moment a test is added."""
+    root = Path(inspect.getsourcefile(tx)).parent.parent
+    readme = (root / "README.md").read_text()
+    contention = (root / "tests" / "test_contention.py").read_text()
+    written = {
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+        "eleven": 11,
+        "twelve": 12,
+    }
+    defined = len(re.findall(r"^async def (test_\w+)", contention, re.M))
+    claimed = re.search(r"the same file runs in about a second with (\w+) passes", readme)
+    failing = len(re.findall(r"^FAILED test_\w+$", readme, re.M))
+    passing = re.search(r"^(\d+) failed, (\d+) passed in ", readme, re.M)
+
+    assert written[claimed.group(1)] == defined
+    assert int(passing.group(1)) == failing
+    assert int(passing.group(1)) + int(passing.group(2)) == defined

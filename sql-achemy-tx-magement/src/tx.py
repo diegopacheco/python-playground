@@ -61,6 +61,7 @@ OWNED_BY_THE_BOUNDARY = frozenset(
         "run_sync",
         "_proxied",
         "_proxy_objects",
+        "_maker_context_manager",
     }
 )
 
