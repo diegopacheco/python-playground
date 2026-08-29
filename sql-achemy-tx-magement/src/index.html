@@ -533,7 +533,8 @@ def current_session() -> BoundarySession:
 
 def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
     if not inspect.iscoroutinefunction(func):
-        raise TypeError(f"@transactional needs an async def, {func.__name__} is not one")
+        name = getattr(func, "__name__", type(func).__name__)
+        raise TypeError(f"@transactional needs an async def, {name} is not one")
 
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> T:
@@ -554,9 +555,11 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     try:
                         result = await func(*args, **kwargs)
                     except BaseException as error:
-                        if context.failure is not None and error is not context.failure:
-                            raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
-                        raise
+                        if context.failure is None or error is context.failure:
+                            raise
+                        if not isinstance(error, Exception):
+                            raise error from context.failure
+                        raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
                     if context.failure is not None:
                         raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
                     transaction = session.get_transaction()

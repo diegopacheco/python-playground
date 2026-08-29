@@ -2154,3 +2154,103 @@ async def test_a_mark_put_back_by_hand_is_the_limit_the_mark_leaves_open(
 
     assert await forge_the_mark() == "success"
     assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_a_cancellation_after_a_swallowed_failure_is_still_a_cancellation(
+    bank: BankService,
+):
+    """A boundary that a joined failure had already poisoned, and that is then
+    cancelled, used to answer with UnexpectedRollback. That swallows the cancellation,
+    which asyncio does not allow: the task did not end cancelled, so a caller awaiting
+    it was told the work had failed rather than been stopped, and the CancelledError
+    that asyncio was waiting to see never arrived. Converting it bought nothing either,
+    because an exception leaving the boundary rolls the transaction back whichever one
+    it is. So a BaseException that is not an Exception propagates as itself and the
+    poison it would have named is its __cause__ instead."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> None:
+        try:
+            await bank.withdraw(account.id, Decimal("999.00"))
+        except InsufficientFunds:
+            pass
+        await asyncio.sleep(3600)
+
+    task = asyncio.ensure_future(boundary())
+    await asyncio.sleep(0.1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await task
+
+    assert task.cancelled()
+    assert isinstance(raised.value.__cause__, InsufficientFunds)
+    assert (await bank.get_account(account.id)).balance == Decimal("100.00")
+
+
+async def test_a_timeout_around_a_poisoned_boundary_is_still_a_timeout(
+    bank: BankService,
+):
+    """The same swallowed cancellation seen from the shape it actually takes.
+    asyncio.timeout only turns a cancellation into TimeoutError if the CancelledError
+    reaches it, so a boundary that answered with UnexpectedRollback instead left the
+    caller's timeout looking like a transaction bug. The rollback is the same either
+    way; what changes is whether the caller can tell why it was stopped."""
+    account = await bank.open_account("bob", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> None:
+        try:
+            await bank.withdraw(account.id, Decimal("999.00"))
+        except InsufficientFunds:
+            pass
+        await asyncio.sleep(3600)
+
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.1):
+            await boundary()
+
+    assert (await bank.get_account(account.id)).balance == Decimal("100.00")
+
+
+async def test_a_swallowed_failure_still_names_itself_when_the_caller_trips_again(
+    bank: BankService,
+):
+    """The half of that rule which has to keep working: an ordinary exception after a
+    swallowed failure is still replaced by UnexpectedRollback naming the poison, and
+    only a BaseException that asyncio owns is let through as itself."""
+    account = await bank.open_account("carol", Decimal("100.00"))
+
+    @transactional
+    async def boundary() -> None:
+        try:
+            await bank.withdraw(account.id, Decimal("999.00"))
+        except InsufficientFunds:
+            pass
+        raise ValueError("something else went wrong")
+
+    with pytest.raises(UnexpectedRollback) as raised:
+        await boundary()
+
+    assert isinstance(raised.value.__cause__, InsufficientFunds)
+    assert isinstance(raised.value.__context__, ValueError)
+
+
+async def test_transactional_refuses_a_callable_that_is_not_a_function(
+    bank: BankService,
+):
+    """The decorator promises a TypeError at import rather than a confusing error
+    later, and an object with an async __call__ is the shape that broke the promise:
+    it is not a coroutine function, so the refusal fired, but the message reached for
+    __name__ on something that has none and the caller got an AttributeError about
+    __ne__ instead of being told what @transactional needs."""
+
+    class Service:
+        async def __call__(self) -> None:
+            pass
+
+    with pytest.raises(TypeError) as raised:
+        transactional(Service())
+
+    assert "async def" in str(raised.value)
+    assert "Service" in str(raised.value)

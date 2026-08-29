@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
 from decimal import Decimal
+from math import isfinite
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import FastAPI, Request
 from fastapi import Path as PathParam
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import (
@@ -101,6 +104,24 @@ async def handle_invalid_amount(request: Request, exc: Exception) -> JSONRespons
 @app.exception_handler(InvalidOwner)
 async def handle_invalid_transfer(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+def readable(value: Any) -> Any:
+    if isinstance(value, float) and not isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: readable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [readable(item) for item in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_unreadable_request(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"detail": readable(jsonable_encoder(exc.errors()))},
+    )
 
 
 @app.exception_handler(IntegrityError)

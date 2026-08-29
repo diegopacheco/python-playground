@@ -561,3 +561,48 @@ async def test_the_readme_counts_the_contention_tests_that_exist():
     assert written[claimed.group(1)] == defined
     assert int(passing.group(1)) == failing
     assert int(passing.group(1)) + int(passing.group(2)) == defined
+
+
+async def test_a_number_json_can_write_and_the_column_cannot_is_a_bad_request(
+    client: httpx.AsyncClient, bank: BankService
+):
+    """`1e999` and `NaN` are JSON numbers Python parses as float infinity and float nan,
+    and the request model refuses both. Refusing them was never the problem: FastAPI
+    echoes the value it rejected back in the 422, and neither one can be written as
+    JSON, so building the answer raised out of the encoder and every money route came
+    back as an opaque 500 with the connection dropped mid-response. A bad amount is a
+    422, including the two spellings that cannot survive the round trip."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+    bodies = [
+        ("/api/accounts", '{"owner": "bob", "initial_balance": 1e999}'),
+        ("/api/accounts", '{"owner": "bob", "initial_balance": NaN}'),
+        (f"/api/accounts/{account.id}/deposit", '{"amount": 1e999}'),
+        (f"/api/accounts/{account.id}/deposit", '{"amount": -1e999}'),
+        (f"/api/accounts/{account.id}/withdraw", '{"amount": NaN}'),
+        ("/api/transfers", '{"source_id": 1, "target_id": 2, "amount": 1e999}'),
+    ]
+
+    for path, body in bodies:
+        response = await client.post(
+            path, content=body, headers={"content-type": "application/json"}
+        )
+        assert response.status_code == 422, (path, body, response.status_code)
+        assert response.json()["detail"], (path, body)
+
+    assert (await bank.get_account(account.id)).balance == Decimal("100.00")
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_an_ordinary_validation_error_still_says_what_was_wrong(
+    client: httpx.AsyncClient,
+):
+    """The handler that makes a non-finite number readable must not flatten every other
+    422 into a message with nothing in it, because the detail is the whole value of the
+    answer for a caller fixing a request."""
+    response = await client.post(
+        "/api/transfers", json={"source_id": 0, "target_id": 2, "amount": "1.00"}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "source_id"]
+    assert response.json()["detail"][0]["type"] == "greater_than_equal"
