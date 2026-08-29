@@ -1,0 +1,20 @@
+sql-achemy-tx-magement/README.md
+  s_67c2645335bf4d::t_3704607885db16 7-97,754-758
+  s_67c2645335bf4d::t_8d82d764a5f9b0 759
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "458eefdfba285d9b2defc604dcbd0743d3420e4b",
+  "prompts": {},
+  "sessions": {
+    "s_67c2645335bf4d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f229314-ca50-4abb-94d9-01cdb8cec810",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
