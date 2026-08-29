@@ -692,8 +692,9 @@ async def test_the_stream_refusal_cannot_be_routed_around_through_execute(
 ):
     """stream() is refused because a server-side cursor fails where the boundary
     cannot see it. execute(stream_results=True) asks for the same cursor, so the
-    refusal is only worth anything if that route is closed too. SQLAlchemy shuts it
-    before a statement is sent, which is why the work either side of it still commits."""
+    refusal is only worth anything if that route is closed too. The DECLARE does reach
+    Postgres, but SQLAlchemy closes the cursor and raises before a row is read, so the
+    transaction survives and the work either side of it still commits."""
     swallowed = []
 
     @transactional
@@ -726,3 +727,166 @@ async def test_a_missing_account_is_refused_even_when_the_ids_are_a_generator(
 
     with pytest.raises(AccountNotFound):
         await caller()
+
+
+async def test_a_captured_session_method_cannot_be_driven_from_a_spawned_task(
+    bank: BankService,
+):
+    """Checking the task on the way through __getattr__ guards the object, not the use.
+    A bound method taken off the session inside the boundary carried no check at all, so
+    capturing execute instead of the session got a spawned task straight back in."""
+
+    @transactional
+    async def caller() -> int:
+        execute = current_session().execute
+
+        async def spawned() -> int:
+            result = await execute(text("select 1"))
+            return result.scalar_one()
+
+        return await asyncio.create_task(spawned())
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+
+async def test_a_spawned_task_cannot_write_through_a_captured_method(bank: BankService):
+    """The damage the read only hints at. The spawned task's INSERT went through a
+    method the boundary had already handed out, so nothing refused it and the boundary
+    committed a row it never saw."""
+
+    @transactional
+    async def caller() -> None:
+        execute = current_session().execute
+
+        async def spawned() -> None:
+            await execute(
+                text("insert into accounts (owner, balance) values ('ghost', 1.00)")
+            )
+
+        await asyncio.create_task(spawned())
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_captured_sync_method_cannot_be_driven_from_a_thread(bank: BankService):
+    """add() is not a coroutine function, so it used to be handed back unwrapped and
+    was the one call with no guard on it in any form. A worker thread staged an entity
+    through it and the boundary flushed and committed the row."""
+
+    @transactional
+    async def caller() -> None:
+        add = current_session().add
+        await asyncio.to_thread(lambda: add(Account(owner="ghost", balance=1)))
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_captured_method_is_dead_outside_its_boundary(bank: BankService):
+    """The session goes dead with the boundary; so must anything taken off it. A
+    captured method autobegan a second transaction on a closed session, which checked a
+    connection out of the pool that nothing ever returned: one leak per call, until the
+    pool is empty and every request is a 503."""
+    holder = {}
+
+    @transactional
+    async def capture() -> None:
+        holder["execute"] = current_session().execute
+
+    await capture()
+
+    with pytest.raises(NoActiveTransaction):
+        await holder["execute"](text("select 1"))
+
+
+async def test_two_session_calls_cannot_be_gathered(bank: BankService):
+    """The realistic shape of the mistake: parallelise two queries on the session you
+    already hold. gather() awaits both coroutines in child tasks, so the guard has to
+    run when the coroutine is stepped and not only when the method is looked up. It
+    used to surface as IllegalStateChangeError raised out of session teardown, which is
+    an unhandled 500 and another connection left behind in INTRANS."""
+
+    @transactional
+    async def caller() -> None:
+        session = current_session()
+        await asyncio.gather(
+            session.execute(text("select 1")), session.execute(text("select 2"))
+        )
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+
+async def test_object_session_is_a_fourth_name_for_the_sync_session(bank: BankService):
+    """sync_session, run_sync and _proxied were refused while object_session handed the
+    same Session back from any entity the DAOs had loaded. SQLAlchemy happens to refuse
+    a sync commit made from a running loop, but a block list that is exhaustive by
+    argument has to be exhaustive in fact."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def same_object() -> bool:
+        entity = await AccountDAO().find(account.id)
+        session = current_session()._session
+        return session.object_session(entity) is session.sync_session
+
+    assert await same_object() is True
+
+    @transactional
+    async def caller() -> None:
+        getattr(current_session(), "object_session")
+
+    with pytest.raises(TransactionNotYours):
+        await caller()
+
+
+async def test_a_server_side_cursor_asked_for_by_yield_per_is_refused_too(
+    bank: BankService,
+):
+    """yield_per implies stream_results, so it is the same server-side cursor stream()
+    is refused for. SQLAlchemy closes the cursor and raises before the rows are read,
+    which is why the work either side of it still commits."""
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        try:
+            await current_session().execute(
+                select(Account).execution_options(yield_per=1)
+            )
+        except InvalidRequestError:
+            pass
+        return "the work is done"
+
+    assert await caller() == "the work is done"
+    assert [account.owner for account in await bank.list_accounts()] == ["carol"]
+
+
+async def test_a_database_error_that_never_reached_postgres_is_still_poison(
+    bank: BankService,
+):
+    """psycopg raises a DBAPIError for a parameter it cannot adapt, before anything is
+    sent, so that one transaction really was still committable. The recorder poisons it
+    anyway: telling the two apart means asking the driver whether the statement left the
+    process, and a transaction manager that guesses wrong in the other direction reports
+    success for discarded work. Erring towards the rollback is the decision."""
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        try:
+            await current_session().execute(text("select :x"), {"x": object()})
+        except ProgrammingError:
+            pass
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await caller()
+
+    assert await bank.list_accounts() == []

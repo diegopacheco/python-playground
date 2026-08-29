@@ -29,6 +29,7 @@ OWNED_BY_THE_BOUNDARY = frozenset(
         "get_bind",
         "get_transaction",
         "sync_session",
+        "object_session",
         "run_sync",
         "_proxied",
     }
@@ -71,12 +72,15 @@ class BoundarySession:
         self._session = session
         self._context = context
 
-    def __getattr__(self, name: str) -> Any:
+    def _guard(self) -> None:
         if self._context.closed:
             raise NoActiveTransaction(
                 "the transaction this session belonged to has already ended"
             )
         _check_task(self._context)
+
+    def __getattr__(self, name: str) -> Any:
+        self._guard()
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name} belongs to @transactional, not to the code inside it"
@@ -88,11 +92,20 @@ class BoundarySession:
                 "transaction instead of being committed over"
             )
         attribute = getattr(self._session, name)
-        if not inspect.iscoroutinefunction(attribute):
+        if not callable(attribute):
             return attribute
+        if not inspect.iscoroutinefunction(attribute):
+
+            @wraps(attribute)
+            def checked(*args: Any, **kwargs: Any) -> Any:
+                self._guard()
+                return attribute(*args, **kwargs)
+
+            return checked
 
         @wraps(attribute)
         async def guarded(*args: Any, **kwargs: Any) -> Any:
+            self._guard()
             try:
                 return await attribute(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:

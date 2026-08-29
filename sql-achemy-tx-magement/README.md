@@ -40,6 +40,18 @@ boundary committed its writes while the same task calling any `@transactional` m
 wrapper re-checks the task on every attribute it hands out, not only on the way in. The refusal has to live on the
 object a DAO holds, because that object is what crosses the task boundary.
 
+Checking the attribute *lookup* was not enough either, because what crosses does not have to be the wrapper. A bound
+method taken off it is an ordinary object with no boundary in it at all, so `execute = current_session().execute`
+handed to a spawned task drove the session and the boundary committed the row, one alias away from the capture the
+lookup check had just closed. The same method kept past the boundary autobegan a second transaction on a closed
+session and checked out a connection nothing ever returned — one leaked connection per call until the pool is empty
+and every request is a `503`. And `asyncio.gather(session.execute(...), session.execute(...))`, which is the shape the
+mistake actually takes, does the lookup on the right task and moves only the await, so no lookup check could ever have
+seen it; it used to surface as an `IllegalStateChangeError` raised out of session teardown, which is an unhandled
+`500` and another connection abandoned `INTRANS`. The check therefore runs inside the callable, on every call, not
+only when the name is resolved. Calls that are not coroutines are wrapped for the same reason: `add()` and `expunge()`
+stage work without an await, so handing them back untouched left the one route with no guard on it in any form.
+
 A `@transactional` frame is not the only thing that can poison the transaction, and it must not be. A database error
 caught straight off a DAO never crosses one, but Postgres has already aborted that transaction, and committing an
 aborted transaction is a silent no-op, so the boundary would return success for work the database threw away.
@@ -61,21 +73,24 @@ server-side cursor, so the statement fails while the *result* is iterated rather
 boundary wrapped. A swallowed failure there poisoned the transaction with nothing recording it, `is_active` stayed
 true, and the boundary returned success for work Postgres had thrown away. Guarding it properly would mean proxying
 the result object and everything it hands back, so the two methods are refused instead. That costs nothing here,
-where nothing streams, and it keeps the guarantee absolute rather than almost.
+where nothing streams, and it keeps the guarantee absolute rather than almost. Asking `execute()` for the same cursor
+with `stream_results` or `yield_per` is not a way around it: the `DECLARE` does reach Postgres, but SQLAlchemy closes
+the cursor and raises `AsyncMethodRequired` before a row is read, so the transaction survives and the work either side
+of it still commits.
 
 `current_session()` hands back a `BoundarySession`, not the `AsyncSession` itself. Everything a DAO needs passes
 straight through, but `commit`, `rollback`, `close`, `aclose`, `close_all`, `reset`, `invalidate`, `begin`,
-`begin_nested`, `connection`, `get_bind`, `get_transaction`, `sync_session`, `run_sync`, `_proxied`, `stream` and
-`stream_scalars` raise `TransactionNotYours`. Without that, a single `await current_session().commit()` anywhere inside the boundary would
+`begin_nested`, `connection`, `get_bind`, `get_transaction`, `sync_session`, `object_session`, `run_sync`, `_proxied`,
+`stream` and `stream_scalars` raise `TransactionNotYours`. Without that, a single `await current_session().commit()` anywhere inside the boundary would
 split it, and the half that ran before the call would survive the rollback of the half that ran after it.
 
 `run_sync` is the one worth naming, because a block list that stops at `sync_session` looks complete and is not:
 `run_sync` hands out the very `Session` that `sync_session` is refused for, so
 `await current_session().run_sync(lambda s: s.commit())` committed the debit leg of a transfer, the boundary rolled
 back the credit leg it could still see, and thirty units of money stopped existing. `_proxied` is the third name for
-that same object — `AsyncSession`'s own alias for `sync_session` — and blocking two of the three blocked nothing;
-SQLAlchemy happens to refuse a sync call made from a running loop, but a block list that is exhaustive by argument has
-to be exhaustive in fact. `get_bind` is in for the same reason: it hands out the `Engine`, which is a way out of the
+that same object — `AsyncSession`'s own alias for `sync_session` — and `object_session` is the fourth, which hands it
+back from any entity a DAO has loaded. Blocking three of the four blocked nothing; SQLAlchemy happens to refuse a sync
+call made from a running loop, but a block list that is exhaustive by argument has to be exhaustive in fact. `get_bind` is in for the same reason: it hands out the `Engine`, which is a way out of the
 boundary rather than a way to end it. `reset`, `invalidate` and
 `close_all` end the transaction the same way `close` does; the liveness check already caught those, but a refusal that
 names the call is an answer the caller can act on and a state error is not. The wrapper also goes dead when the boundary does, because
@@ -99,7 +114,7 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **Automatic propagation** — a nested call, including a call into a different service, joins the caller's transaction instead of opening a second one.
 - **Rollback-only participation** — a failed joined call poisons the transaction, so swallowing the exception cannot produce a half-committed transfer.
 - **A returned boundary really committed** — any `DBAPIError` or `CancelledError` off the session poisons the transaction even if the caller swallows it, so success is never reported for work Postgres threw away. The one call that could not be watched that way, `stream()`, is refused rather than left open as a hole.
-- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `reset`, `invalidate`, `connection`, `get_bind`, `get_transaction`, `sync_session`, `run_sync`, `_proxied` and `stream` raise instead of splitting the boundary or hiding a failure, and the wrapper dies with its boundary. `run_sync` and `_proxied` are in that list because they are two more names for the same sync `Session` that `sync_session` is refused for.
+- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `reset`, `invalidate`, `connection`, `get_bind`, `get_transaction`, `sync_session`, `run_sync`, `_proxied`, `object_session` and `stream` raise instead of splitting the boundary or hiding a failure, and the wrapper dies with its boundary. `run_sync`, `_proxied` and `object_session` are in that list because they are three more names for the same sync `Session` that `sync_session` is refused for.
 - **Contention handled with row locks** — `SELECT ... FOR UPDATE` serialises the read-modify-write per account, so concurrent deposits cannot lose updates.
 - **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, and a ledger entry takes the same lock before its foreign keys do, so no two writers queue in opposite orders.
 - **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money.
@@ -108,7 +123,7 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **The database enforces it too** — `CHECK (balance >= 0)` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind.
 - **Bounded waiting** — `lock_timeout` and `statement_timeout` are set on every connection, so a stalled transaction cannot block a hot account forever, and a request that cannot get a connection out of the pool gives up rather than queueing behind it; all three surface as `503` rather than a hang.
 - **Frozen views cross the boundary** — the service returns dataclasses, never ORM entities, so nothing detached ever reaches the controller.
-- **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it — through the lookup, and through the wrapper itself, so capturing the session and handing the object over is refused too.
+- **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it. The refusal is on the lookup, on the wrapper, and inside every call the wrapper hands out, so capturing the session, capturing one of its methods, or gathering two calls made on the right task are all refused rather than committed.
 - **Cancellation is a rollback** — a joined call killed by a timeout poisons the transaction, and so does a statement cancelled inside a plain DAO call, so a caller that swallows the `TimeoutError` still cannot commit either way.
 - **Fails loud outside a boundary** — DAO access with no open transaction, or through a session kept past its boundary, raises `NoActiveTransaction` instead of auto-committing, and `@transactional` on a function that is not `async def` is a `TypeError` at import rather than a confusing one at call time.
 - **UI that shows the boundary** — every action prints COMMIT or ROLLBACK with the balances before and after, and the annotated `tx.py` on the *How it works* tab is pinned to the real file by a test, so the page cannot drift into documenting a boundary nobody is running.
@@ -179,7 +194,7 @@ For the default Spring settings, yes on everything that matters. The differences
 | Statement cancelled inside a DAO call, caller swallows it | no equivalent; a thread interrupt is not a rollback signal | rollback-only, the session records the `CancelledError` |
 | Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task or `to_thread()` worker is refused the inherited session, and refused the captured one |
 | Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the session recorded the `DBAPIError` that poisoned it |
-| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session method that could, `run_sync`, `_proxied` and `get_bind` included; reaching around it through `_session` or raw SQL still works |
+| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on every session method that could, `run_sync`, `_proxied`, `object_session` and `get_bind` included; reaching around it through `_session`, `sqlalchemy.orm.object_session(entity)` or raw SQL still works |
 | `REQUIRES_NEW`, `NESTED`, `SUPPORTS`, `MANDATORY` | supported | not implemented |
 | `readOnly`, `isolation`, `timeout` | supported | not implemented |
 
@@ -258,11 +273,12 @@ What the suite checks, all automated in `tests/test_contention.py`:
 Honest limits, since this is a POC and not a payment system:
 
 - Isolation is Postgres' default `READ COMMITTED`. The row locks are what make the balance arithmetic safe, not the isolation level.
+- Every `DBAPIError` is treated as poison, including the few that never reached Postgres. psycopg raises one for a parameter it cannot adapt, before anything is sent, so that transaction really was still committable and the boundary rolls it back anyway. Telling the two apart means asking the driver whether the statement left the process; guessing wrong in the other direction reports success for discarded work, so the rollback is the side to err on. It only costs anything when the caller swallows the error, because an error that propagates is the one the boundary re-raises unchanged.
 - A swallowed database error is caught either way, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints. Caught through a `@transactional` call it is rollback-only; caught straight off a DAO the session recorded it anyway. Both end as `UnexpectedRollback` rather than a confusing SQLAlchemy state error or, worse, a quiet success.
 - `withdraw()` and `deposit()` re-lock the row they were handed, because both are callable on their own and have to be safe that way. A transfer therefore spends six round trips where four would do. The redundant locks are already held, so they cost latency and never risk.
 - The lock is per account row, so unrelated accounts never block each other, but a hot account serialises every transfer that touches it. That is the intended trade: correctness first.
 - The refusals in `BoundarySession` are a guard against a mistake, not a security boundary. The block list covers every session method that can end or split the transaction or hand out the sync `Session` under it — `run_sync`, `_proxied` and `get_bind` included — but business code that reaches past it — `_session`, or a raw `COMMIT` or `ROLLBACK` string — still splits the boundary, and neither the rollback-only flag nor the liveness check will notice. A raw `ROLLBACK` is the sharp one: SQLAlchemy still reports the transaction active, so the boundary reports success for work Postgres discarded. Python has no way to prevent that; the tests pin the mistakes people actually make.
-- A task spawned inside a boundary is refused the session, and the refusal is total: it cannot open a transaction of its own either. `asyncio.gather()` of two service calls, `asyncio.shield()`, a `TaskGroup` and any background work all raise `CrossTaskTransaction` from inside a boundary, and a fire-and-forget `create_task()` fails where nobody retrieves the exception while the boundary commits around it. Fan-out has to start outside the boundary, or after it returns.
+- A task spawned inside a boundary is refused the session, and the refusal covers every route to it: the lookup, the wrapper object, a method captured off the wrapper, and a call whose lookup happened on the right task and whose await did not — `asyncio.gather()` of two `session.execute()` calls is that last one. `asyncio.gather()` of two service calls, `asyncio.shield()`, a `TaskGroup` and any background work all raise `CrossTaskTransaction` from inside a boundary, and a fire-and-forget `create_task()` fails where nobody retrieves the exception while the boundary commits around it. Fan-out has to start outside the boundary, or after it returns. What is still reachable is what is reachable everywhere: `_session`, and `sqlalchemy.orm.object_session()` on an entity a DAO loaded, are objects the boundary never handed out and cannot take back.
 - Streaming is refused rather than guarded. `stream()` and `stream_scalars()` are the only session calls whose failure the boundary cannot observe, so a project that needs server-side cursors has to proxy the result object before it can have both.
 - The schema is `create_all`, not migrations. The constraints are DDL, so a database created before them keeps the old shape; `podman-compose down -v` once is what applies them to an existing volume.
 
@@ -292,12 +308,15 @@ class BoundarySession:
         self._session = session
         self._context = context
 
-    def __getattr__(self, name: str) -> Any:
+    def _guard(self) -> None:
         if self._context.closed:
             raise NoActiveTransaction(
                 "the transaction this session belonged to has already ended"
             )
         _check_task(self._context)
+
+    def __getattr__(self, name: str) -> Any:
+        self._guard()
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name} belongs to @transactional, not to the code inside it"
@@ -309,11 +328,20 @@ class BoundarySession:
                 "transaction instead of being committed over"
             )
         attribute = getattr(self._session, name)
-        if not inspect.iscoroutinefunction(attribute):
+        if not callable(attribute):
             return attribute
+        if not inspect.iscoroutinefunction(attribute):
+
+            @wraps(attribute)
+            def checked(*args: Any, **kwargs: Any) -> Any:
+                self._guard()
+                return attribute(*args, **kwargs)
+
+            return checked
 
         @wraps(attribute)
         async def guarded(*args: Any, **kwargs: Any) -> Any:
+            self._guard()
             try:
                 return await attribute(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
@@ -472,7 +500,7 @@ Swagger UI at `/docs`, generated from the controller. Every route here is exactl
 ./build.sh         # venv with python3.14 and dependencies
 ./start.sh         # postgres 18 in podman, then the app on http://localhost:8000
 ./test-client.sh   # a commit and two rollbacks over HTTP, with balances after each
-./test.sh          # 70 tests against a real postgres, in a separate database
+./test.sh          # 78 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
 
@@ -560,6 +588,14 @@ tests/test_transaction_boundary.py::test_a_captured_session_cannot_be_driven_fro
 tests/test_transaction_boundary.py::test_the_three_names_for_the_sync_session_are_all_refused PASSED
 tests/test_transaction_boundary.py::test_the_stream_refusal_cannot_be_routed_around_through_execute PASSED
 tests/test_transaction_boundary.py::test_a_missing_account_is_refused_even_when_the_ids_are_a_generator PASSED
+tests/test_transaction_boundary.py::test_a_captured_session_method_cannot_be_driven_from_a_spawned_task PASSED
+tests/test_transaction_boundary.py::test_a_spawned_task_cannot_write_through_a_captured_method PASSED
+tests/test_transaction_boundary.py::test_a_captured_sync_method_cannot_be_driven_from_a_thread PASSED
+tests/test_transaction_boundary.py::test_a_captured_method_is_dead_outside_its_boundary PASSED
+tests/test_transaction_boundary.py::test_two_session_calls_cannot_be_gathered PASSED
+tests/test_transaction_boundary.py::test_object_session_is_a_fourth_name_for_the_sync_session PASSED
+tests/test_transaction_boundary.py::test_a_server_side_cursor_asked_for_by_yield_per_is_refused_too PASSED
+tests/test_transaction_boundary.py::test_a_database_error_that_never_reached_postgres_is_still_poison PASSED
 
-70 passed
+78 passed
 ```
