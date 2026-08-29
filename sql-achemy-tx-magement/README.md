@@ -171,7 +171,6 @@ What the suite checks, all automated in `tests/test_contention.py`:
 Honest limits, since this is a POC and not a payment system:
 
 - Isolation is Postgres' default `READ COMMITTED`. The row locks are what make the balance arithmetic safe, not the isolation level.
-- Nothing retries. A transaction that Postgres aborts, for a deadlock it detects through some other access pattern or for a serialization failure, surfaces as an error to the caller instead of being replayed.
 - Rollback-only survives a swallowed database error, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints; the caller gets `UnexpectedRollback` with the driver error as its cause instead of a confusing SQLAlchemy state error.
 - `withdraw()` and `deposit()` re-lock the row they were handed, because both are callable on their own and have to be safe that way. A transfer therefore spends six round trips where four would do. The redundant locks are already held, so they cost latency and never risk.
 - The lock is per account row, so unrelated accounts never block each other, but a hot account serialises every transfer that touches it. That is the intended trade: correctness first.
@@ -245,6 +244,30 @@ session closes, so any attribute the session had not already loaded raises `Deta
 be nothing, because the models have no relationships and Postgres returns `created_at` from the `INSERT`, but it is a
 trap set for the first relationship anyone adds. Because the reads happen inside the boundary, `expire_on_commit` is
 left at its default instead of being switched off to paper over the problem.
+
+**No retry, and that is the decision, not the gap.** A transaction Postgres aborts surfaces to the caller instead of
+being replayed, for three reasons.
+
+*Retry belongs above the boundary, never inside it.* An aborted transaction cannot be resumed, only re-run from the
+top: the session, its identity map and every row already read are dead. Putting a retry loop inside `@transactional`
+would therefore silently re-execute the whole business method, including anything it did that Postgres cannot roll
+back — an email, an HTTP call, a message on a queue. The decorator manages one transaction; it does not replay your
+method behind your back. A retry that re-invokes a service method from the outside is honest about that, and it is the
+caller who knows whether the method is safe to run twice.
+
+*Only two error classes may be replayed.* Deadlock detected (`40P01`) and serialization failure (`40001`) are transient
+and worth another attempt. `InsufficientFunds`, a unique violation on `owner`, a `CHECK` violation, a foreign key
+violation and a `lock_timeout` are all deterministic: retrying turns one clear error into the same error N times plus
+the latency. A retry decorator is only ever correct with an explicit list of what it catches, and that list is
+application knowledge, not transaction-manager knowledge.
+
+*Here there is nothing left to catch.* Serialization failures come from `REPEATABLE READ` and `SERIALIZABLE`; this runs
+at `READ COMMITTED`, where `SELECT ... FOR UPDATE` blocks and re-reads instead of aborting. Deadlock is not retried
+away either, it is designed away, by taking both row locks in one statement in ascending id order — the property
+`test_transfers_in_opposite_directions_do_not_deadlock` exists to hold. So a retry loop added today would be dead code
+guarding a path this design does not produce. It becomes necessary the moment someone raises the isolation level or
+adds a write path that touches rows in a different order, and at that point it goes around the service call, not
+inside `tx.py`.
 
 **`lock_timeout` and `statement_timeout` on every connection.** Row locks make a hot account serialise, which is the
 intended trade, but without a timeout a single stalled transaction blocks every transfer touching that account

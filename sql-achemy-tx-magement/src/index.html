@@ -172,6 +172,13 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        Postgres puts its <code>LockRows</code> node above the <code>Sort</code>, so both rows are locked in ascending id
        order and <code>alice &rarr; bob</code> and <code>bob &rarr; alice</code> running at the same time cannot each
        hold the row the other one wants.</p>
+    <p class="note">Nothing retries, on purpose. An aborted transaction cannot be resumed, only re-run from the top, so
+       a retry loop inside <code>@transactional</code> would silently re-execute the whole business method including
+       whatever it did that Postgres cannot roll back. Retry belongs around the service call, where the caller knows
+       whether running it twice is safe, and it belongs there with an explicit list of what it catches:
+       <code>40001</code> and <code>40P01</code> are worth another attempt, <code>InsufficientFunds</code> and a
+       <code>CHECK</code> violation are the same answer every time. At <code>READ COMMITTED</code> with the lock order
+       above, this design produces neither, so the loop would be dead code today.</p>
     <p class="note">The database is the backstop, not the referee. <code>CHECK (balance >= 0)</code> and the foreign
        keys from <code>ledger</code> to <code>accounts</code> mean a bug in the service cannot leave a negative balance
        or an orphan row behind, and <code>lock_timeout</code> means a stalled transaction cannot hold a hot account
