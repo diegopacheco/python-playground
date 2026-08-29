@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import wraps
+from itertools import count
 from typing import Any
 
 from psycopg.pq import TransactionStatus
@@ -23,6 +24,11 @@ DISCARDED_BY_POSTGRES = (
     "postgres is no longer in the transaction the boundary opened, so it has already "
     "committed it, rolled it back or aborted it"
 )
+LOST_MARK = (
+    "the mark the boundary set on its transaction is gone, so that transaction ended "
+    "and postgres is in another one"
+)
+MARK = "application_name"
 NOT_YOURS_TO_CLOSE = (
     "the session's own context manager closes it on exit; @transactional opened this "
     "transaction and is the only thing that ends it"
@@ -90,12 +96,16 @@ def _check_task(context: "TransactionContext") -> None:
         )
 
 
-def _driver_connection(connection: Any) -> Any:
+def _driver_of(connection: Any) -> Any:
     return connection.sync_connection.connection.dbapi_connection
 
 
 def _in_transaction(driver: Any) -> bool:
     return driver.info.transaction_status == TransactionStatus.INTRANS
+
+
+def _mark_of(driver: Any) -> str:
+    return driver.info.parameter_status(MARK)
 
 
 def _is_context_manager(value: Any) -> bool:
@@ -146,21 +156,16 @@ class BoundarySession:
                 "transaction instead of being committed over"
             )
 
-    def _watch(self) -> None:
-        if self._context.driver is not None and not _in_transaction(
-            self._context.driver
-        ):
-            self._context.discarded = True
-
-    async def _record(self) -> None:
-        if self._context.driver is not None:
-            self._watch()
+    async def _open(self) -> None:
+        context = self._context
+        if context.driver is not None:
             return
         connection = await self._session.connection()
-        driver = _driver_connection(connection)
-        if _in_transaction(driver):
-            self._context.transaction = connection.get_transaction()
-            self._context.driver = driver
+        mark = f"boundary-{next(_boundaries)}"
+        await connection.exec_driver_sql(f"set local {MARK} = '{mark}'")
+        context.transaction = connection.get_transaction()
+        context.driver = _driver_of(connection)
+        context.mark = mark
 
     async def __aenter__(self) -> "BoundarySession":
         raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
@@ -209,14 +214,13 @@ class BoundarySession:
         @wraps(attribute)
         async def guarded(*args: Any, **kwargs: Any) -> Any:
             self._guard()
-            self._watch()
             try:
+                await self._open()
                 answer = await attribute(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
                 if self._context.failure is None:
                     self._context.failure = error
                 raise
-            await self._record()
             return answer
 
         return guarded
@@ -229,10 +233,11 @@ class TransactionContext:
     closed: bool = False
     transaction: AsyncTransaction | None = None
     driver: Any = None
-    discarded: bool = False
+    mark: str = ""
     session: BoundarySession = field(init=False)
 
 
+_boundaries = count()
 _current: ContextVar[TransactionContext | None] = ContextVar("current", default=None)
 
 
@@ -288,8 +293,11 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                             raise UnexpectedRollback(LOST_CONNECTION)
                         if connection.get_transaction() is not context.transaction:
                             raise UnexpectedRollback(SPLIT_CONNECTION)
-                        if context.discarded or not _in_transaction(context.driver):
+                        driver = _driver_of(connection)
+                        if driver is not context.driver or not _in_transaction(driver):
                             raise UnexpectedRollback(DISCARDED_BY_POSTGRES)
+                        if _mark_of(driver) != context.mark:
+                            raise UnexpectedRollback(LOST_MARK)
                     return result
             finally:
                 context.closed = True

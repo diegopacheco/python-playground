@@ -9,7 +9,9 @@ from db import Base
 
 class Account(Base):
     __tablename__ = "accounts"
-    __table_args__ = (CheckConstraint("balance >= 0", name="balance_non_negative"),)
+    __table_args__ = (
+        CheckConstraint("balance >= 0 and balance <> 'NaN'", name="balance_is_money"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     owner: Mapped[str] = mapped_column(String(80), unique=True)

@@ -32,6 +32,8 @@ from service import (
     _lock_accounts,
 )
 from tx import (
+    DISCARDED_BY_POSTGRES,
+    LOST_MARK,
     BoundarySession,
     CrossTaskTransaction,
     NoActiveTransaction,
@@ -1807,3 +1809,195 @@ async def test_a_savepoint_recovery_by_hand_is_still_a_rollback(bank: BankServic
 
     assert isinstance(refused.value.__cause__, DBAPIError)
     assert await bank.list_accounts() == []
+
+
+async def test_a_raw_commit_before_any_other_statement_is_caught(bank: BankService):
+    """The driver net used to arm itself on the first session call that came back with
+    postgres inside a transaction, which made it depend on the order the mistakes are
+    made in. A raw COMMIT as the first statement leaves the socket idle, so the net
+    never armed, the next call opened a fresh transaction the net then armed on, and
+    every check at the end compared that new transaction against itself. The boundary
+    marks its transaction on the way in instead, so there is no window before it."""
+
+    @transactional
+    async def commit_first() -> str:
+        session = current_session()
+        await session.execute(text("COMMIT"))
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        return "success"
+
+    with pytest.raises(UnexpectedRollback):
+        await commit_first()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_raw_rollback_before_any_other_statement_is_caught(bank: BankService):
+    """The same window in the other direction. A ROLLBACK first discards nothing yet,
+    but it proves the net was blind until something armed it, and the work after it
+    committed under a boundary that reported success for a transaction it never
+    opened."""
+
+    @transactional
+    async def rollback_first() -> str:
+        session = current_session()
+        await session.execute(text("ROLLBACK"))
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        return "success"
+
+    with pytest.raises(UnexpectedRollback):
+        await rollback_first()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_work_committed_by_a_raw_string_cannot_be_reported_as_success(
+    bank: BankService,
+):
+    """The window with money in it. One statement string that writes and then commits
+    hands postgres real work and ends the transaction before any session call could
+    arm a net, so the row survived the rollback that followed and the boundary returned
+    success over it. The row is still committed - nothing here can undo what postgres
+    already kept - but the boundary has to name it rather than call it a commit."""
+
+    @transactional
+    async def write_and_commit_in_one_string() -> str:
+        await current_session().execute(
+            text("INSERT INTO accounts (owner, balance) VALUES ('ghost', 10); COMMIT")
+        )
+        return "success"
+
+    with pytest.raises(UnexpectedRollback) as refused:
+        await write_and_commit_in_one_string()
+
+    assert str(refused.value) in (DISCARDED_BY_POSTGRES, LOST_MARK)
+
+
+async def test_a_raw_commit_that_opens_another_transaction_is_caught(
+    bank: BankService,
+):
+    """Asking the socket whether a transaction is open cannot tell the boundary's
+    transaction from its replacement, and one string can end the first and open the
+    second. Every check passed: SQLAlchemy was never told, the connection still held
+    the transaction object the boundary recorded, and the driver reported INTRANS
+    again. The mark answers the question the status cannot, because postgres throws a
+    SET LOCAL away when the transaction it belongs to ends and tells the client it
+    did."""
+
+    @transactional
+    async def commit_and_open_another() -> str:
+        session = current_session()
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        await session.execute(
+            text("COMMIT; BEGIN; INSERT INTO accounts (owner, balance) VALUES ('b', 2)")
+        )
+        return "success"
+
+    with pytest.raises(UnexpectedRollback) as refused:
+        await commit_and_open_another()
+
+    assert str(refused.value) == LOST_MARK
+
+
+async def test_business_code_that_overwrites_the_mark_is_refused_not_ignored(
+    bank: BankService,
+):
+    """The cost of marking the transaction, paid in the safe direction. Business code
+    that sets application_name inside the boundary takes the mark away without ending
+    anything, and the boundary refuses a transaction postgres would have committed.
+    That is the same side the savepoint case errs on: a named refusal for a boundary
+    that was fine beats a silent commit for one that was not."""
+
+    @transactional
+    async def take_the_mark() -> str:
+        session = current_session()
+        await AccountDAO().insert("alice", Decimal("1.00"))
+        await session.execute(text("set local application_name = 'mine'"))
+        return "success"
+
+    with pytest.raises(UnexpectedRollback) as refused:
+        await take_the_mark()
+
+    assert str(refused.value) == LOST_MARK
+    assert await bank.list_accounts() == []
+
+
+async def test_no_name_the_wrapper_keeps_shadows_a_name_the_session_has():
+    """The wrapper is __getattr__ and __getattr__ only runs for names Python cannot
+    find, so every attribute the wrapper defines is a session name it silently swaps
+    for its own. The special methods are on it deliberately; a helper is not, and one
+    named for a session method would break that API while every test kept passing."""
+    helpers = {
+        name
+        for name in vars(BoundarySession)
+        if not (name.startswith("__") and name.endswith("__"))
+    }
+
+    assert helpers & set(dir(AsyncSession)) == set()
+
+
+async def test_an_eager_task_cannot_borrow_the_session(bank: BankService):
+    """An eager task factory runs the coroutine synchronously until it first suspends,
+    so a create_task() inside a boundary starts on the caller's stack and the refusal
+    depends on the eager task making itself current before it does. If it did not, the
+    child would drive the session while the lookup still answered for the parent."""
+    loop = asyncio.get_running_loop()
+    loop.set_task_factory(asyncio.eager_task_factory)
+
+    @transactional
+    async def spawn_eagerly() -> None:
+        session = current_session()
+
+        async def child() -> None:
+            await session.flush()
+
+        await asyncio.create_task(child())
+
+    try:
+        with pytest.raises(CrossTaskTransaction):
+            await spawn_eagerly()
+    finally:
+        loop.set_task_factory(None)
+
+
+async def test_a_thread_running_its_own_loop_cannot_borrow_the_session(
+    bank: BankService,
+):
+    """A worker thread with no loop answers 'no task' and is refused for that. A worker
+    thread that starts a loop of its own answers with a real task instead, which is the
+    same mistake wearing the shape the check compares against, and the session would be
+    driven from two loops at once if the identity were not the thing compared."""
+
+    @transactional
+    async def hand_it_to_a_thread() -> None:
+        session = current_session()
+
+        def worker() -> None:
+            asyncio.run(session.flush())
+
+        await asyncio.to_thread(worker)
+
+    with pytest.raises(CrossTaskTransaction):
+        await hand_it_to_a_thread()
+
+
+async def test_the_schema_refuses_a_balance_that_is_not_a_number(bank: BankService):
+    """`balance >= 0` is the backstop for a service bug, and it does not hold the line
+    it looks like it holds: postgres orders NaN above every number, so a NaN balance
+    satisfies the check. Nothing in the service can write one - every route refuses a
+    non-finite amount before the column sees it - but a balance the bank cannot compare
+    is worse than a negative one, because reading it back and depositing raises out of
+    the decimal module rather than being refused by anything that names it."""
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def force_a_nan() -> None:
+        await current_session().execute(
+            text("update accounts set balance = 'NaN' where id = :id"),
+            {"id": account.id},
+        )
+
+    with pytest.raises(IntegrityError):
+        await force_a_nan()
+
+    assert (await bank.get_account(account.id)).balance == Decimal("10.00")
