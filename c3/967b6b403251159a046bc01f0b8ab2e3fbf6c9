@@ -1,0 +1,37 @@
+sql-achemy-tx-magement/tests/test_contention.py
+  s_29d1ba14730882::t_b0c2405b1e884d 259-305
+sql-achemy-tx-magement/README.md
+  s_29d1ba14730882::t_240d11dc082adb 490-491
+  s_29d1ba14730882::t_902051ba74c851 908,910,924,932,951,953,1021,1061
+  s_29d1ba14730882::t_df21b554f0bec9 855,960,1078
+  s_29d1ba14730882::t_40ca3fc41ec925 478-479,481,484,486,489,523
+  s_29d1ba14730882::t_f2c7d3252f879b 380,390,422
+  s_29d1ba14730882::t_7ce92e2ab2c266 423-424
+sql-achemy-tx-magement/src/index.html
+  s_29d1ba14730882::t_239a80d0806992 668-674
+sql-achemy-tx-magement/tests/test_money.py
+  s_29d1ba14730882::t_f22ada4d36f126 270-294
+sql-achemy-tx-magement/tests/test_api.py
+  s_29d1ba14730882::t_f27175ef11a759 663-710
+sql-achemy-tx-magement/tests/test_transaction_boundary.py
+  s_29d1ba14730882::t_f3f6c16116b324 2526-2561
+  s_29d1ba14730882::t_865bfa243343cc 2473-2525
+sql-achemy-tx-magement/src/service.py
+  s_29d1ba14730882::t_c713a311fed5c3 135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "c3967b6b403251159a046bc01f0b8ab2e3fbf6c9",
+  "prompts": {},
+  "sessions": {
+    "s_29d1ba14730882": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebfe3b1f-07d2-425b-bd17-526779e80cb5",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
