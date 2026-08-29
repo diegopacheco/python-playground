@@ -1,0 +1,62 @@
+sql-achemy-tx-magement/requirements.txt
+  s_bce2f139296846::t_3812cfe324a33e 1-7
+sql-achemy-tx-magement/test.sh
+  s_bce2f139296846::t_b1632750a2ca5e 1-6
+sql-achemy-tx-magement/src/controller.py
+  s_bce2f139296846::t_0fc292a6654172 1-49,56,60-61,65-101
+  s_bce2f139296846::t_e81289d57cf5b1 50-55,57-59,62-64
+sql-achemy-tx-magement/src/tx.py
+  s_bce2f139296846::t_18c454e525e13d 1-39
+sql-achemy-tx-magement/src/models.py
+  s_bce2f139296846::t_18c454e525e13d 1-27
+sql-achemy-tx-magement/README.md
+  s_bce2f139296846::t_b921b6537d74d1 1-68,77-172
+  s_bce2f139296846::t_2eb8cbd5a6178e 69-76
+sql-achemy-tx-magement/stop.sh
+  s_bce2f139296846::t_b1632750a2ca5e 1-11
+sql-achemy-tx-magement/.gitignore
+  s_bce2f139296846::t_3812cfe324a33e 1-5
+sql-achemy-tx-magement/src/db.py
+  s_bce2f139296846::t_18c454e525e13d 1-22
+sql-achemy-tx-magement/tests/test_api.py
+  s_bce2f139296846::t_9aaa7e2feeee2c 1-58
+sql-achemy-tx-magement/src/dao.py
+  s_bce2f139296846::t_18c454e525e13d 1-44
+sql-achemy-tx-magement/src/service.py
+  s_bce2f139296846::t_0fc292a6654172 1-74
+sql-achemy-tx-magement/build.sh
+  s_bce2f139296846::t_b1632750a2ca5e 1-10
+sql-achemy-tx-magement/db-start.sh
+  s_bce2f139296846::t_b1632750a2ca5e 1-17
+sql-achemy-tx-magement/podman-compose.yml
+  s_bce2f139296846::t_b1632750a2ca5e 1-14
+sql-achemy-tx-magement/tests/conftest.py
+  s_bce2f139296846::t_5558c2b1b4e413 1-26
+sql-achemy-tx-magement/test-client.sh
+  s_bce2f139296846::t_14acfdb48e3b88 1-41
+sql-achemy-tx-magement/tests/test_transaction_boundary.py
+  s_bce2f139296846::t_5558c2b1b4e413 1-140
+sql-achemy-tx-magement/pytest.ini
+  s_bce2f139296846::t_3812cfe324a33e 1-4
+sql-achemy-tx-magement/start.sh
+  s_bce2f139296846::t_b1632750a2ca5e 1-27
+sql-achemy-tx-magement/architecture.svg
+  s_bce2f139296846::t_fb8adee0800a67 1-16,22-23,31-33,36,39,43,47,51,58-62
+  s_bce2f139296846::t_ca4097970c137c 17-21,24-30,34-35,37-38,40-42,44-46,48-50,52-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "86dff924f6cc5aea00b337800731e5c2125645c5",
+  "prompts": {},
+  "sessions": {
+    "s_bce2f139296846": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4899c14c-4d68-4331-a675-4a6b0b8a3b14",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
