@@ -13,7 +13,13 @@ from db import session_factory
 
 ROLLBACK_ONLY = "a failure inside the boundary marked the transaction rollback-only"
 LOST_TRANSACTION = "the transaction was closed or deactivated inside the boundary"
+LOST_CONNECTION = "the transaction was ended on the connection under the boundary"
+NOT_YOURS_TO_CLOSE = (
+    "the session's own context manager closes it on exit; @transactional opened this "
+    "transaction and is the only thing that ends it"
+)
 UNGUARDABLE = frozenset({"stream", "stream_scalars"})
+THE_WRAPPERS_OWN = frozenset({"_session", "_context"})
 OWNED_BY_THE_BOUNDARY = frozenset(
     {
         "commit",
@@ -29,6 +35,7 @@ OWNED_BY_THE_BOUNDARY = frozenset(
         "get_bind",
         "bind",
         "get_transaction",
+        "get_nested_transaction",
         "identity_map",
         "sync_session",
         "object_session",
@@ -82,8 +89,7 @@ class BoundarySession:
             )
         _check_task(self._context)
 
-    def __getattr__(self, name: str) -> Any:
-        self._guard()
+    def _refuse(self, name: str) -> None:
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name} belongs to @transactional, not to the code inside it"
@@ -94,6 +100,24 @@ class BoundarySession:
                 "the boundary cannot see it; use execute() so a failure poisons the "
                 "transaction instead of being committed over"
             )
+
+    async def __aenter__(self) -> "BoundarySession":
+        raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
+
+    async def __aexit__(self, *unused: Any) -> None:
+        raise TransactionNotYours(NOT_YOURS_TO_CLOSE)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in THE_WRAPPERS_OWN:
+            object.__setattr__(self, name, value)
+            return
+        self._guard()
+        self._refuse(name)
+        setattr(self._session, name, value)
+
+    def __getattr__(self, name: str) -> Any:
+        self._guard()
+        self._refuse(name)
         attribute = getattr(self._session, name)
         if not inspect.isroutine(attribute):
             return attribute
@@ -109,6 +133,7 @@ class BoundarySession:
         @wraps(attribute)
         async def guarded(*args: Any, **kwargs: Any) -> Any:
             self._guard()
+            self._context.connected = True
             try:
                 return await attribute(*args, **kwargs)
             except (DBAPIError, asyncio.CancelledError) as error:
@@ -124,6 +149,7 @@ class TransactionContext:
     task: asyncio.Task[Any] | None
     failure: BaseException | None = None
     closed: bool = False
+    connected: bool = False
     session: BoundarySession = field(init=False)
 
 
@@ -175,6 +201,10 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     transaction = session.get_transaction()
                     if transaction is None or not transaction.is_active:
                         raise UnexpectedRollback(LOST_TRANSACTION)
+                    if context.connected:
+                        connection = await session.connection()
+                        if not connection.in_transaction():
+                            raise UnexpectedRollback(LOST_CONNECTION)
                     return result
             finally:
                 context.closed = True

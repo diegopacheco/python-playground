@@ -4,9 +4,9 @@ from typing import Any
 from weakref import ReferenceType
 
 import pytest
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Connection, Engine, select, text
 from sqlalchemy.exc import IntegrityError, InvalidRequestError, ProgrammingError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 from sqlalchemy.orm import Session
 
 from dao import AccountDAO, LedgerDAO
@@ -564,7 +564,11 @@ async def test_every_way_of_ending_the_transaction_is_refused(bank: BankService)
     refusal that names the call is the answer the caller can act on. The rest reach
     past the boundary rather than ending it: _proxied and _proxy_objects are two more
     names for the sync Session, get_bind and bind are two names for the engine, and
-    identity_map is the session's own state under a name that is not a method."""
+    identity_map is the session's own state under a name that is not a method.
+    get_nested_transaction is on the list for the same reason get_transaction is: it
+    hands out a SessionTransaction that can be ended directly. It only ever answers
+    None while begin_nested is refused, which is precisely why an audit that stops at
+    what is reachable today would have left it off."""
     for name in (
         "reset",
         "invalidate",
@@ -576,6 +580,7 @@ async def test_every_way_of_ending_the_transaction_is_refused(bank: BankService)
         "get_bind",
         "bind",
         "identity_map",
+        "get_nested_transaction",
     ):
 
         @transactional
@@ -1041,3 +1046,185 @@ async def test_a_blank_owner_is_refused(bank: BankService):
         await bank.open_account("   ", Decimal("10.00"))
 
     assert await bank.list_accounts() == []
+
+
+async def test_an_assignment_lands_on_the_session_and_not_on_the_wrapper(
+    bank: BankService,
+):
+    """__getattr__ guarded every read and nothing guarded a write, so
+    `current_session().autoflush = False` set the attribute on the wrapper and never
+    reached the session. An instance attribute then shadows __getattr__, so reading it
+    back returned the value that had not been applied: the wrapper reported the setting
+    while the session went on flushing. Silently changing what a call means is the one
+    thing this design is not allowed to do, and an assignment is a call."""
+    await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def rows_seen() -> tuple[bool, int]:
+        session = current_session()
+        session.autoflush = False
+        session.add(Account(owner="carol", balance=Decimal("1.00")))
+        held_back = await session.execute(select(Account))
+        return session.autoflush, len(held_back.scalars().all())
+
+    assert await rows_seen() == (False, 1)
+
+
+async def test_an_assignment_cannot_switch_the_block_list_off(bank: BankService):
+    """The sharp half of the same hole. `current_session().bind = ...` used to succeed
+    and put a value in the wrapper's own __dict__, which shadows __getattr__ entirely,
+    so the very next read of `bind` handed back the assigned value instead of raising.
+    An assignment could turn the refusal off, which makes the block list only as strong
+    as the code that never assigns to it."""
+
+    @transactional
+    async def caller(name: str) -> None:
+        setattr(current_session(), name, "not the boundary's to replace")
+
+    for name in ("bind", "commit", "sync_session", "stream"):
+        with pytest.raises(TransactionNotYours):
+            await caller(name)
+
+    @transactional
+    async def still_refused() -> None:
+        current_session().bind
+
+    with pytest.raises(TransactionNotYours):
+        await still_refused()
+
+
+async def test_an_assignment_is_refused_from_a_spawned_task(bank: BankService):
+    """Assignment takes the same two refusals every other route takes. Without the
+    guard, a spawned task could stage work on the session through a setting rather than
+    through a call, which is the one shape the task check on the lookup never saw."""
+
+    @transactional
+    async def caller() -> None:
+        session = current_session()
+
+        def off() -> None:
+            session.autoflush = False
+
+        await asyncio.to_thread(off)
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+
+async def test_the_sessions_own_context_manager_is_refused(bank: BankService):
+    """`async with session:` closes the session on the way out, which is close() under
+    a syntax the block list cannot see: Python looks __aenter__ up on the type, so the
+    name check never runs. It was already impossible, but only by accident, as a
+    TypeError about a missing __aexit__ rather than an answer the caller can act on."""
+
+    @transactional
+    async def caller() -> None:
+        async with current_session():
+            pass
+
+    with pytest.raises(TransactionNotYours):
+        await caller()
+
+
+async def test_the_result_object_hands_back_the_connection_under_the_boundary(
+    bank: BankService,
+):
+    """The block list can only name what lives on the session, and this does not: the
+    CursorResult that execute() hands back exposes the very Connection the boundary is
+    holding, and the engine behind it. Refusing it would mean proxying every result and
+    everything a result hands back, which is the cost that got stream() refused. It is
+    pinned here so the limit is a fact the suite states rather than only prose."""
+
+    @transactional
+    async def what_a_result_carries() -> tuple[bool, bool]:
+        result = await current_session().execute(text("select 1"))
+        return (
+            isinstance(result.connection, Connection),
+            result.connection.engine is engine.sync_engine,
+        )
+
+    assert await what_a_result_carries() == (True, True)
+
+
+async def test_a_commit_through_the_result_object_is_not_a_commit(bank: BankService):
+    """Reaching the connection is one thing; the boundary reporting success over it is
+    another. A commit through it split a transfer, and SQLAlchemy's SessionTransaction
+    still reports is_active true afterwards, so the liveness check saw nothing and the
+    boundary failed at COMMIT with a raw InvalidRequestError. The connection knows what
+    the session does not, so the boundary asks it and names the answer."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+
+    @transactional
+    async def half_a_transfer() -> str:
+        await bank.withdraw(source.id, Decimal("30.00"))
+        result = await current_session().execute(text("select 1"))
+        await AsyncConnection._retrieve_proxy_for_target(result.connection).commit()
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await half_a_transfer()
+
+    assert (await bank.get_account(target.id)).balance == Decimal("0.00")
+
+
+async def test_a_rollback_through_the_result_object_is_not_a_commit(bank: BankService):
+    """The same route in the other direction, and the worse one: everything the
+    boundary did is gone and there is no failure anywhere for it to notice."""
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        result = await current_session().execute(text("select 1"))
+        await AsyncConnection._retrieve_proxy_for_target(result.connection).rollback()
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await caller()
+
+    assert await bank.list_accounts() == []
+
+
+async def test_a_raw_rollback_string_is_past_every_net(bank: BankService):
+    """The limit that stays. A ROLLBACK string ends the transaction inside Postgres,
+    where neither SQLAlchemy's SessionTransaction nor the connection is told: is_active
+    stays true and in_transaction() stays true, so all three nets pass and the boundary
+    reports success for work the database threw away. Nothing in Python can stop code
+    that means to do this, and a suite that only shows what is caught would leave the
+    reader thinking the guarantee is absolute."""
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        await current_session().execute(text("rollback"))
+        return "the work is done"
+
+    assert await caller() == "the work is done"
+    assert await bank.list_accounts() == []
+
+
+async def test_a_boundary_that_touches_nothing_never_asks_for_a_connection(
+    bank: BankService,
+):
+    """The connection check has to be free for a method that did no database work, or
+    every @transactional call that returns early would check a connection out of the
+    pool and send a BEGIN for nothing. The flag the session wrapper sets is what buys
+    that, and the second boundary here is what proves the flag is not simply always
+    false."""
+    await engine.dispose()
+
+    @transactional
+    async def touches_nothing() -> str:
+        current_session()
+        return "no query was made"
+
+    assert await touches_nothing() == "no query was made"
+    assert engine.pool.checkedin() == 0
+
+    @transactional
+    async def touches_the_database() -> int:
+        result = await current_session().execute(text("select 1"))
+        return result.scalar_one()
+
+    assert await touches_the_database() == 1
+    assert engine.pool.checkedin() == 1
