@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from dao import AccountDAO, LedgerDAO
 from service import (
@@ -388,3 +388,54 @@ async def test_a_lock_helper_cannot_hand_an_entity_across_a_boundary(bank: BankS
 
     with pytest.raises(NoActiveTransaction):
         await bank.lock_account(account.id)
+
+
+async def test_a_swallowed_select_error_cannot_be_reported_as_success(
+    bank: BankService,
+):
+    """SQLAlchemy only deactivates its SessionTransaction on a failed flush. A statement
+    error from any other call leaves is_active True while Postgres has already aborted
+    the transaction, so the liveness check alone passes and the COMMIT that follows is a
+    silent no-op. The session itself has to record the failure."""
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        try:
+            await current_session().execute(text("select * from no_such_table"))
+        except ProgrammingError:
+            pass
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback) as failure:
+        await caller()
+
+    assert isinstance(failure.value.__cause__, ProgrammingError)
+    assert await bank.list_accounts() == []
+
+
+async def test_a_thread_inside_a_boundary_cannot_borrow_the_session(bank: BankService):
+    """asyncio.to_thread copies the context into the worker thread, so the session is
+    reachable there. There is no running loop in that thread, and asking for the current
+    task raises, so the guard has to answer 'no task' rather than let a RuntimeError
+    about the event loop stand in for the real refusal."""
+    @transactional
+    async def caller() -> None:
+        await asyncio.to_thread(current_session)
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+
+async def test_a_session_captured_inside_a_boundary_is_dead_outside_it(
+    bank: BankService,
+):
+    """An AsyncSession autobegins on next use, so a BoundarySession kept past its
+    boundary would quietly open a second transaction that nothing can ever commit."""
+    @transactional
+    async def capture():
+        return current_session()
+
+    session = await capture()
+
+    with pytest.raises(NoActiveTransaction):
+        await session.execute(text("select 1"))

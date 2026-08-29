@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from service import BankService, InvalidAmount
+from service import BankService, InvalidAmount, LedgerService
 
 
 async def total_balance(bank: BankService) -> Decimal:
@@ -73,3 +73,42 @@ async def test_the_returned_view_is_the_value_the_database_kept(bank: BankServic
 
     assert returned.balance == stored.balance
     assert str(returned.balance) == str(stored.balance) == "100.10"
+
+
+async def test_trailing_zeros_are_not_finer_than_a_cent(bank: BankService):
+    """10.00000 and 1E+1 are the same ten. Testing the exponent instead of the value
+    refused one of them and accepted the other, which is a 400 on valid money."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+
+    await bank.transfer(source.id, target.id, Decimal("10.00000"))
+    await bank.deposit(target.id, Decimal("1E+1"))
+
+    assert (await bank.get_account(target.id)).balance == Decimal("20.00")
+    assert (await bank.get_account(source.id)).balance == Decimal("90.00")
+
+
+async def test_a_deposit_that_would_overflow_the_column_is_refused(bank: BankService):
+    """The amount fits and the balance does not. Checking only the amount let the sum
+    reach Postgres as a numeric field overflow, which blames the request for a value
+    that was fine."""
+    account = await bank.open_account("alice", Decimal("9999999999999999.99"))
+
+    with pytest.raises(InvalidAmount):
+        await bank.deposit(account.id, Decimal("1.00"))
+
+    assert (await bank.get_account(account.id)).balance == Decimal("9999999999999999.99")
+
+
+async def test_the_ledger_refuses_an_amount_the_bank_would_refuse(bank: BankService):
+    """record() is a boundary of its own and the README says so, so it cannot rely on
+    transfer() having validated the amount first."""
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
+    ledger = LedgerService()
+
+    for amount in (Decimal("0.001"), Decimal("0.00"), Decimal("-5.00")):
+        with pytest.raises(InvalidAmount):
+            await ledger.record(source.id, target.id, amount)
+
+    assert await bank.list_ledger() == []

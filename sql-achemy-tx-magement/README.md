@@ -18,7 +18,9 @@ commit half the work. That is Spring's participation behaviour, and it is what `
 killed by `asyncio.timeout()` has to poison the transaction like any other failure, or a swallowed `TimeoutError` commits
 half a transfer. The context remembers the exception that poisoned it, so `UnexpectedRollback.__cause__` names the
 original failure, and an exception that is simply propagating out of the boundary is re-raised untouched instead of
-being masked.
+being masked. When a caller swallows a joined failure and then trips over something else, the poisoning failure is the
+one reported and the later one stays reachable as `__context__`; Spring propagates the later one instead, which loses
+the first. That is the one place the two disagree on purpose.
 
 The DAOs never receive a session as an argument. They call `current_session()`, which reads the same context variable and
 raises if there is no transaction open, so a DAO can never quietly write outside a boundary. `ContextVar` is per-task, so
@@ -28,18 +30,30 @@ Per-task is also enforced, not just assumed. A `ContextVar` is *copied* into eve
 an `asyncio.create_task()` or an `asyncio.gather()` of service calls would inherit the caller's `AsyncSession` and drive
 it from two tasks at once, which SQLAlchemy does not allow. Each context therefore records the task that opened it, and a
 lookup from any other task raises `CrossTaskTransaction` instead of corrupting the session or, worse, silently splitting
-one transaction into several.
+one transaction into several. `asyncio.to_thread()` copies the context too, and a worker thread has no running loop at
+all, so the lookup answers "no task" there rather than letting a `RuntimeError` about the event loop stand in for the
+real refusal.
 
-Rollback-only only fires when the failure passes through a `@transactional` frame, and a database error caught straight
-off a DAO does not. Postgres has already deactivated that transaction, and committing a dead transaction is a silent
-no-op, so the boundary would return success for work the database threw away. The decorator therefore asks the session
-whether the transaction is still alive before it returns, and raises `UnexpectedRollback` when it is not. Nothing that
-returns from a boundary can have been discarded.
+A `@transactional` frame is not the only thing that can poison the transaction, and it must not be. A database error
+caught straight off a DAO never crosses one, but Postgres has already aborted that transaction, and committing an
+aborted transaction is a silent no-op, so the boundary would return success for work the database threw away.
+`BoundarySession` therefore records any `DBAPIError` it raises as the failure that poisoned the context, whoever
+swallows it afterwards. That has to happen at the session, not at the commit: SQLAlchemy deactivates its
+`SessionTransaction` on a failed *flush* only, so after a failed `execute()` it still reports `is_active` true while
+psycopg reports the connection `INERROR`. The liveness check before the return stays as the second net, for a
+transaction that ended some other way. Nothing that reaches the database through the session the boundary handed out
+can be discarded and still reported as success.
 
 `current_session()` hands back a `BoundarySession`, not the `AsyncSession` itself. Everything a DAO needs passes
-straight through, but `commit`, `rollback`, `close`, `begin` and `begin_nested` raise `TransactionNotYours`. Without
-that, a single `await current_session().commit()` anywhere inside the boundary would split it, and the half that ran
-before the call would survive the rollback of the half that ran after it.
+straight through, but `commit`, `rollback`, `close`, `begin`, `begin_nested`, `connection`, `get_transaction` and
+`sync_session` raise `TransactionNotYours`. Without that, a single `await current_session().commit()` anywhere inside
+the boundary would split it, and the half that ran before the call would survive the rollback of the half that ran
+after it. The wrapper also goes dead when the boundary does, because an `AsyncSession` autobegins on next use and a
+session kept past its boundary would otherwise open a second transaction that nothing can ever commit.
+
+It is a guard against a mistake, not a sandbox. `_session` is still an attribute and raw `COMMIT` is still a string, so
+business code that means to break out of the boundary can. Nothing in Python can stop that, and pretending otherwise
+would be the dishonest part.
 
 Commit and rollback themselves come from `async with session.begin()`. SQLAlchemy commits on a clean exit and rolls back
 on any exception, so the decorator has no `try/except` around business logic and never swallows an error.
@@ -53,19 +67,19 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **One decorator marks the boundary** — `@transactional` on a service method is the only transaction code in the project.
 - **Automatic propagation** — a nested call, including a call into a different service, joins the caller's transaction instead of opening a second one.
 - **Rollback-only participation** — a failed joined call poisons the transaction, so swallowing the exception cannot produce a half-committed transfer.
-- **A returned boundary really committed** — a transaction Postgres deactivated is caught before the decorator returns, so success is never reported for discarded work.
-- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback` and `close` raise instead of splitting the boundary.
+- **A returned boundary really committed** — any `DBAPIError` off the session poisons the transaction even if the caller swallows it, so success is never reported for work Postgres threw away.
+- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `connection` and `get_transaction` raise instead of splitting the boundary, and the wrapper dies with its boundary.
 - **Contention handled with row locks** — `SELECT ... FOR UPDATE` serialises the read-modify-write per account, so concurrent deposits cannot lose updates.
 - **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, and a ledger entry takes the same lock before its foreign keys do, so no two writers queue in opposite orders.
-- **Money is money** — amounts finer than a cent, non-finite or too large for `Numeric(18, 2)` are refused, because rounding each leg of a transfer separately invents money.
+- **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money.
 - **Invisible session** — controller, DAO and models never take, pass or close a session; `current_session()` finds it.
 - **Rollback proven against real Postgres** — the ledger row is flushed before the money moves, so a failure rolls back a write that already reached the database.
 - **The database enforces it too** — `CHECK (balance >= 0)` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind.
 - **Bounded waiting** — `lock_timeout` and `statement_timeout` are set on every connection, so a stalled transaction cannot block a hot account forever; the wait surfaces as `503` rather than a hang.
 - **Frozen views cross the boundary** — the service returns dataclasses, never ORM entities, so nothing detached ever reaches the controller.
-- **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task spawned inside a boundary is refused that session rather than sharing it.
+- **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it.
 - **Cancellation is a rollback** — a joined call killed by a timeout poisons the transaction, so a caller that swallows the `TimeoutError` still cannot commit.
-- **Fails loud outside a boundary** — DAO access with no open transaction raises `NoActiveTransaction` instead of auto-committing.
+- **Fails loud outside a boundary** — DAO access with no open transaction, or through a session kept past its boundary, raises `NoActiveTransaction` instead of auto-committing.
 - **UI that shows the boundary** — every action prints COMMIT or ROLLBACK with the balances before and after.
 - **Postgres 18 in podman** — the database starts, waits for readiness and stops from scripts, nothing installed on the host.
 
@@ -93,14 +107,16 @@ The UI is at `http://localhost:8000/` and Swagger UI at `http://localhost:8000/d
 | `POST` | `/api/accounts` | `{"owner": str, "initial_balance": str}` | `201` and the account, `409` if the owner is taken. |
 | `GET` | `/api/accounts` | — | All accounts. |
 | `GET` | `/api/accounts/{id}` | — | One account, `404` if unknown. |
-| `POST` | `/api/accounts/{id}/deposit` | `{"amount": str}` | The updated account. |
-| `POST` | `/api/accounts/{id}/withdraw` | `{"amount": str}` | The updated account, `409` if funds are short. |
-| `POST` | `/api/transfers` | `{"source_id": int, "target_id": int, "amount": str}` | `201` and the ledger entry. |
+| `POST` | `/api/accounts/{id}/deposit` | `{"amount": str}` | The updated account, `404` if unknown, `400` if the amount or the resulting balance is not money. |
+| `POST` | `/api/accounts/{id}/withdraw` | `{"amount": str}` | The updated account, `404` if unknown, `409` if funds are short. |
+| `POST` | `/api/transfers` | `{"source_id": int, "target_id": int, "amount": str}` | `201` and the ledger entry, `404` if either account is unknown, `409` if funds are short, `400` if the two ids are the same. |
 | `GET` | `/api/ledger` | — | All committed ledger entries. |
 
-An amount that is not money — finer than a cent, non-finite, or too large for the column — is a `400`, and an id or an
-owner outside what the schema can hold is a `422` from the request model. A wait longer than `lock_timeout` is a `503`.
-No input reaches Postgres in a shape it has to reject with a `500`.
+An amount that is not money — finer than a cent, non-finite, too large for the column, or large enough that the
+resulting balance would not fit — is a `400`, and an id or an owner outside what the schema can hold is a `422` from the
+request model. A wait longer than `lock_timeout` is a `503`. No input reaches Postgres in a shape it has to reject, so
+the `IntegrityError` and `DataError` handlers in the controller are there for the bug that gets past the service, not
+for the normal path.
 
 ```bash
 curl -X POST http://localhost:8000/api/transfers \
@@ -117,18 +133,19 @@ For the default Spring settings, yes on everything that matters. The differences
 | Default propagation | `REQUIRED` | `REQUIRED`, the only mode implemented |
 | Commit | method returns | method returns |
 | Rollback | unchecked exceptions only | any exception; Python has no checked exceptions |
-| Joined call fails, caller swallows it | rollback-only, then `UnexpectedRollbackException` | rollback-only, then `UnexpectedRollback` |
+| Joined call fails, caller swallows it and returns | rollback-only, then `UnexpectedRollbackException` | rollback-only, then `UnexpectedRollback` |
+| Joined call fails, caller swallows it and then raises something else | the later exception propagates, the first is lost | `UnexpectedRollback`; the first is the `__cause__`, the later one the `__context__` |
 | Nested call opens a second transaction | no, it joins | no, it joins |
 | Self-invocation | bypasses the proxy, so no transaction at all | still participates; the decorator wraps the function itself |
 | Transaction is bound to | the thread (`ThreadLocal`) | the asyncio task (`ContextVar`) |
 | Joined call cancelled, caller swallows it | rollback-only | rollback-only, `CancelledError` is not an `Exception` but is still caught |
-| Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task is refused the inherited session |
-| Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the boundary checks the transaction is still alive |
-| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours`, the session handed out cannot commit |
+| Transaction reused from another thread/task | `ThreadLocal`, so a new thread simply has none | `CrossTaskTransaction`, a spawned task or `to_thread()` worker is refused the inherited session |
+| Database error swallowed without crossing a proxy | commit fails, the caller is told | `UnexpectedRollback`, the session recorded the `DBAPIError` that poisoned it |
+| Business code commits the connection itself | possible, the boundary cannot stop it | `TransactionNotYours` on the session handed out; reaching around it through `_session` or raw SQL still works |
 | `REQUIRES_NEW`, `NESTED`, `SUPPORTS`, `MANDATORY` | supported | not implemented |
 | `readOnly`, `isolation`, `timeout` | supported | not implemented |
 
-Two of those deserve a sentence.
+Three of those deserve a sentence.
 
 **Self-invocation is where this beats Spring.** Spring's `@Transactional` is a proxy, so `this.withdraw()` inside
 `transfer()` never reaches it, which is the framework's most famous gotcha. Here the decorator wraps the function object,
@@ -137,6 +154,12 @@ method is itself transactional, and strictly safer when it is not.
 
 **Rollback rules are simpler on purpose.** Spring distinguishes checked from unchecked exceptions because Java has both.
 Python does not, so every exception rolls back, which is what `rollbackFor = Exception.class` gives you in Java anyway.
+
+**A poisoned transaction reports the poison, not the symptom.** If a joined call fails, the caller swallows it, and the
+caller then hits a second error, Spring propagates the second one and the first is gone. Here the first is the
+`__cause__` of the `UnexpectedRollback` and the second is its `__context__`, so the traceback shows both and the one
+that actually made the transaction unusable is the headline. This is a deliberate divergence, not an accident, and
+`test_unexpected_rollback_names_the_exception_that_poisoned_it` pins it.
 
 The propagation claims are not assertions in prose; they are what `tests/test_transaction_boundary.py` checks by
 capturing the session object at each layer and comparing identities.
@@ -161,7 +184,8 @@ FAILED test_recording_a_ledger_entry_does_not_deadlock_with_a_transfer
 4 failed, 3 passed in 10.66s
 ```
 
-Ten concurrent deposits of `10.00` into an empty account left `20.00` in it: eight writes were lost. Ten transfers
+The exact numbers move from run to run because the interleaving does; the four failures do not. In that run, ten
+concurrent deposits of `10.00` into an empty account left `20.00` in it: eight writes were lost. Ten transfers
 running in both directions between two accounts turned `200.00` into `240.00`: the bank invented money. The 10.66s
 runtime is Postgres deadlock detection firing, because without a lock order `alice -> bob` and `bob -> alice` each hold
 the row the other one wants. As shipped, the same file runs in 0.88s with seven passes.
@@ -193,27 +217,46 @@ What the suite checks, all automated in `tests/test_contention.py`:
 Honest limits, since this is a POC and not a payment system:
 
 - Isolation is Postgres' default `READ COMMITTED`. The row locks are what make the balance arithmetic safe, not the isolation level.
-- A swallowed database error is caught either way, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints. Caught through a `@transactional` call it is rollback-only; caught straight off a DAO it is the liveness check. Both end as `UnexpectedRollback` rather than a confusing SQLAlchemy state error or, worse, a quiet success.
+- A swallowed database error is caught either way, but only as a diagnosis. Once Postgres aborts the transaction there is nothing left to continue with, because there are no savepoints. Caught through a `@transactional` call it is rollback-only; caught straight off a DAO the session recorded it anyway. Both end as `UnexpectedRollback` rather than a confusing SQLAlchemy state error or, worse, a quiet success.
 - `withdraw()` and `deposit()` re-lock the row they were handed, because both are callable on their own and have to be safe that way. A transfer therefore spends six round trips where four would do. The redundant locks are already held, so they cost latency and never risk.
 - The lock is per account row, so unrelated accounts never block each other, but a hot account serialises every transfer that touches it. That is the intended trade: correctness first.
+- The refusals in `BoundarySession` are a guard against a mistake, not a security boundary. Business code that reaches past it — `_session`, or a raw `COMMIT` string — splits the transaction, and neither the rollback-only flag nor the liveness check will notice. Python has no way to prevent that; the tests pin the mistakes people actually make.
 - The schema is `create_all`, not migrations. The constraints are DDL, so a database created before them keeps the old shape; `podman-compose down -v` once is what applies them to an existing volume.
 
 ## Key Design Decisions
 
-**The decorator, in full.** This is the entire mechanism, plus the ten lines that keep the session from being
-committed out from under it:
+**The decorator, in full.** This is the entire mechanism, plus the wrapper that keeps the session from being committed
+out from under it and records the database error that would otherwise be swallowed:
 
 ```python
 class BoundarySession:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, context: "TransactionContext") -> None:
         self._session = session
+        self._context = context
 
     def __getattr__(self, name: str) -> Any:
+        if self._context.closed:
+            raise NoActiveTransaction(
+                "the transaction this session belonged to has already ended"
+            )
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name}() belongs to @transactional, not to the code inside it"
             )
-        return getattr(self._session, name)
+        attribute = getattr(self._session, name)
+        if not inspect.iscoroutinefunction(attribute):
+            return attribute
+
+        @wraps(attribute)
+        async def guarded(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await attribute(*args, **kwargs)
+            except DBAPIError as error:
+                if self._context.failure is None:
+                    self._context.failure = error
+                raise
+
+        return guarded
 ```
 
 ```python
@@ -229,9 +272,8 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     joined.failure = error
                 raise
         async with session_factory() as session:
-            context = TransactionContext(
-                BoundarySession(session), asyncio.current_task()
-            )
+            context = TransactionContext(asyncio.current_task())
+            context.session = BoundarySession(session, context)
             token = _current.set(context)
             try:
                 async with session.begin():
@@ -248,6 +290,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         raise UnexpectedRollback(LOST_TRANSACTION)
                     return result
             finally:
+                context.closed = True
                 _current.reset(token)
 
     return wrapper
@@ -282,8 +325,12 @@ Three inserts reached the database, one survived.
 `numeric` to `Decimal` in both directions. `Decimal` alone is not enough: the column rounds to two places on write, and
 a transfer rounds its debit and its credit independently. Moving `0.125` takes `0.12` from one account and gives `0.13`
 to the other, so twenty of them mint a cent each and `CHECK (balance >= 0)` never notices, because the invariant broken
-is conservation, not sign. `_check_money()` refuses anything finer than a cent, non-finite, or too large for the
-column, and the views quantize, so the `Decimal` a caller gets back is the one the row holds.
+is conservation, not sign. `_check_money()` refuses anything non-finite, too large for the column, or that survives a
+`quantize()` to two places with a different value — testing the value and not the exponent, so `10.00000` and `1E+1`
+are both accepted as the same ten. `_check_balance()` then refuses a deposit whose *sum* would overflow the column,
+because an amount that fits is not the same as a balance that fits. `LedgerService.record()` runs the same check as
+`BankService`: the README calls it a boundary of its own, so it cannot lean on `transfer()` having validated first.
+The views quantize, so the `Decimal` a caller gets back is the one the row holds.
 
 **Views cross the boundary, entities do not.** A service method returns a frozen `AccountView` or `LedgerView` built
 while the transaction is still open, not the ORM entity. An entity handed to the controller is detached the moment the
@@ -353,7 +400,7 @@ Swagger UI at `/docs`, generated from the controller. Every route here is exactl
 ./build.sh         # venv with python3.14 and dependencies
 ./start.sh         # postgres 18 in podman, then the app on http://localhost:8000
 ./test-client.sh   # a commit and two rollbacks over HTTP, with balances after each
-./test.sh          # 45 tests against a real postgres, in a separate database
+./test.sh          # 51 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
 
@@ -392,6 +439,9 @@ tests/test_money.py::test_a_sub_cent_opening_balance_is_refused PASSED
 tests/test_money.py::test_a_non_finite_amount_is_refused PASSED
 tests/test_money.py::test_an_amount_the_column_cannot_hold_is_refused PASSED
 tests/test_money.py::test_the_returned_view_is_the_value_the_database_kept PASSED
+tests/test_money.py::test_trailing_zeros_are_not_finer_than_a_cent PASSED
+tests/test_money.py::test_a_deposit_that_would_overflow_the_column_is_refused PASSED
+tests/test_money.py::test_the_ledger_refuses_an_amount_the_bank_would_refuse PASSED
 tests/test_transaction_boundary.py::test_committed_work_is_visible_to_the_next_transaction PASSED
 tests/test_transaction_boundary.py::test_transfer_commits_both_legs_and_the_ledger_together PASSED
 tests/test_transaction_boundary.py::test_insufficient_funds_rolls_back_the_ledger_entry PASSED
@@ -416,6 +466,9 @@ tests/test_transaction_boundary.py::test_a_swallowed_dao_error_cannot_be_reporte
 tests/test_transaction_boundary.py::test_business_code_cannot_commit_the_boundarys_transaction PASSED
 tests/test_transaction_boundary.py::test_unexpected_rollback_names_the_exception_that_poisoned_it PASSED
 tests/test_transaction_boundary.py::test_a_lock_helper_cannot_hand_an_entity_across_a_boundary PASSED
+tests/test_transaction_boundary.py::test_a_swallowed_select_error_cannot_be_reported_as_success PASSED
+tests/test_transaction_boundary.py::test_a_thread_inside_a_boundary_cannot_borrow_the_session PASSED
+tests/test_transaction_boundary.py::test_a_session_captured_inside_a_boundary_is_dead_outside_it PASSED
 
-45 passed
+51 passed
 ```

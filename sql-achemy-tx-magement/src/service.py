@@ -46,10 +46,21 @@ class LedgerView:
 def _check_money(value: Decimal) -> None:
     if not value.is_finite():
         raise InvalidAmount("amount must be a finite number")
-    if value.as_tuple().exponent < -2:
-        raise InvalidAmount("amount cannot be finer than one cent")
     if abs(value) >= MAX_MONEY:
         raise InvalidAmount("amount is too large to store")
+    if value != value.quantize(CENTS):
+        raise InvalidAmount("amount cannot be finer than one cent")
+
+
+def _check_amount(value: Decimal) -> None:
+    _check_money(value)
+    if value <= 0:
+        raise InvalidAmount("amount must be greater than zero")
+
+
+def _check_balance(value: Decimal) -> None:
+    if value >= MAX_MONEY:
+        raise InvalidAmount(f"a balance of {value} is too large to store")
 
 
 def _account_view(account: Account) -> AccountView:
@@ -75,6 +86,7 @@ class LedgerService:
     async def record(
         self, source_id: int, target_id: int, amount: Decimal
     ) -> LedgerView:
+        _check_amount(amount)
         await self.accounts.find_all_for_update({source_id, target_id})
         return _ledger_view(await self.entries.insert(source_id, target_id, amount))
 
@@ -108,15 +120,15 @@ class BankService:
 
     @transactional
     async def deposit(self, account_id: int, amount: Decimal) -> AccountView:
-        self._check_amount(amount)
+        _check_amount(amount)
         account = await self.lock_account(account_id)
-        return _account_view(
-            await self.accounts.update_balance(account, account.balance + amount)
-        )
+        balance = account.balance + amount
+        _check_balance(balance)
+        return _account_view(await self.accounts.update_balance(account, balance))
 
     @transactional
     async def withdraw(self, account_id: int, amount: Decimal) -> AccountView:
-        self._check_amount(amount)
+        _check_amount(amount)
         account = await self.lock_account(account_id)
         if account.balance < amount:
             raise InsufficientFunds(
@@ -132,7 +144,7 @@ class BankService:
     ) -> LedgerView:
         if source_id == target_id:
             raise InvalidTransfer("source and target must be different accounts")
-        self._check_amount(amount)
+        _check_amount(amount)
         await self.lock_accounts(source_id, target_id)
         entry = await self.ledger.record(source_id, target_id, amount)
         await self.withdraw(source_id, amount)
@@ -156,8 +168,3 @@ class BankService:
             if account_id not in locked:
                 raise AccountNotFound(f"account {account_id} does not exist")
         return accounts
-
-    def _check_amount(self, amount: Decimal) -> None:
-        _check_money(amount)
-        if amount <= 0:
-            raise InvalidAmount("amount must be greater than zero")

@@ -1,18 +1,30 @@
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any
 
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import session_factory
 
-ROLLBACK_ONLY = "a joined call failed and marked the transaction rollback-only"
+ROLLBACK_ONLY = "a failure inside the boundary marked the transaction rollback-only"
 LOST_TRANSACTION = "the transaction was closed or deactivated inside the boundary"
 OWNED_BY_THE_BOUNDARY = frozenset(
-    {"commit", "rollback", "close", "aclose", "begin", "begin_nested"}
+    {
+        "commit",
+        "rollback",
+        "close",
+        "aclose",
+        "begin",
+        "begin_nested",
+        "connection",
+        "get_transaction",
+        "sync_session",
+    }
 )
 
 
@@ -33,32 +45,59 @@ class TransactionNotYours(RuntimeError):
 
 
 class BoundarySession:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, context: "TransactionContext") -> None:
         self._session = session
+        self._context = context
 
     def __getattr__(self, name: str) -> Any:
+        if self._context.closed:
+            raise NoActiveTransaction(
+                "the transaction this session belonged to has already ended"
+            )
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name}() belongs to @transactional, not to the code inside it"
             )
-        return getattr(self._session, name)
+        attribute = getattr(self._session, name)
+        if not inspect.iscoroutinefunction(attribute):
+            return attribute
+
+        @wraps(attribute)
+        async def guarded(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return await attribute(*args, **kwargs)
+            except DBAPIError as error:
+                if self._context.failure is None:
+                    self._context.failure = error
+                raise
+
+        return guarded
 
 
 @dataclass
 class TransactionContext:
-    session: BoundarySession
     task: asyncio.Task[Any] | None
     failure: BaseException | None = None
+    closed: bool = False
+    session: BoundarySession = field(init=False)
 
 
 _current: ContextVar[TransactionContext | None] = ContextVar("current", default=None)
 
 
+def _running_task() -> asyncio.Task[Any] | None:
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return None
+
+
 def _active() -> TransactionContext | None:
     context = _current.get()
-    if context is not None and context.task is not asyncio.current_task():
+    if context is not None and context.task is not _running_task():
         raise CrossTaskTransaction(
-            "the transaction belongs to another task, an AsyncSession cannot be shared"
+            "the transaction belongs to the task that opened it, an AsyncSession "
+            "cannot be driven from anywhere else"
         )
     return context
 
@@ -82,9 +121,8 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                     joined.failure = error
                 raise
         async with session_factory() as session:
-            context = TransactionContext(
-                BoundarySession(session), asyncio.current_task()
-            )
+            context = TransactionContext(asyncio.current_task())
+            context.session = BoundarySession(session, context)
             token = _current.set(context)
             try:
                 async with session.begin():
@@ -101,6 +139,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
                         raise UnexpectedRollback(LOST_TRANSACTION)
                     return result
             finally:
+                context.closed = True
                 _current.reset(token)
 
     return wrapper
