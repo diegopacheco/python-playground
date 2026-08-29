@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from service import BankService, InvalidAmount, LedgerService
+from service import BankService, InvalidAmount, InvalidTransfer, LedgerService
 
 
 async def total_balance(bank: BankService) -> Decimal:
@@ -110,5 +110,18 @@ async def test_the_ledger_refuses_an_amount_the_bank_would_refuse(bank: BankServ
     for amount in (Decimal("0.001"), Decimal("0.00"), Decimal("-5.00")):
         with pytest.raises(InvalidAmount):
             await ledger.record(source.id, target.id, amount)
+
+    assert await bank.list_ledger() == []
+
+
+async def test_the_ledger_refuses_a_transfer_to_the_same_account(bank: BankService):
+    """record() is a boundary of its own, so it re-runs the amount check rather than
+    trusting transfer(). The same reasoning covers the ids: one account cannot pay
+    itself, and set() collapses the pair to a single lock the foreign keys accept."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+    ledger = LedgerService()
+
+    with pytest.raises(InvalidTransfer):
+        await ledger.record(account.id, account.id, Decimal("5.00"))
 
     assert await bank.list_ledger() == []

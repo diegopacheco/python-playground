@@ -13,6 +13,7 @@ from db import session_factory
 
 ROLLBACK_ONLY = "a failure inside the boundary marked the transaction rollback-only"
 LOST_TRANSACTION = "the transaction was closed or deactivated inside the boundary"
+UNGUARDABLE = frozenset({"stream", "stream_scalars"})
 OWNED_BY_THE_BOUNDARY = frozenset(
     {
         "commit",
@@ -57,6 +58,12 @@ class BoundarySession:
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name}() belongs to @transactional, not to the code inside it"
+            )
+        if name in UNGUARDABLE:
+            raise TransactionNotYours(
+                f"{name}() raises from the cursor while the result is iterated, where "
+                "the boundary cannot see it; use execute() so a failure poisons the "
+                "transaction instead of being committed over"
             )
         attribute = getattr(self._session, name)
         if not inspect.iscoroutinefunction(attribute):

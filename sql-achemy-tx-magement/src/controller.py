@@ -7,7 +7,12 @@ from fastapi import FastAPI, Request
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import DataError, IntegrityError, OperationalError
+from sqlalchemy.exc import (
+    DataError,
+    IntegrityError,
+    OperationalError,
+    TimeoutError as PoolTimeout,
+)
 
 from db import create_schema
 from service import (
@@ -107,12 +112,16 @@ async def handle_out_of_range(request: Request, exc: Exception) -> JSONResponse:
 
 
 @app.exception_handler(OperationalError)
+@app.exception_handler(PoolTimeout)
 async def handle_database_unavailable(
     request: Request, exc: Exception
 ) -> JSONResponse:
     return JSONResponse(
         status_code=503,
-        content={"error": "the database refused to wait for a lock or was unreachable"},
+        content={
+            "error": "the database refused to wait for a lock, ran out of connections "
+            "or was unreachable"
+        },
     )
 
 

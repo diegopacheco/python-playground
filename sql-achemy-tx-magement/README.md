@@ -44,12 +44,20 @@ psycopg reports the connection `INERROR`. The liveness check before the return s
 transaction that ended some other way. Nothing that reaches the database through the session the boundary handed out
 can be discarded and still reported as success.
 
+The recorder only sees calls it awaits, which leaves exactly one hole: `stream()` and `stream_scalars()` open a
+server-side cursor, so the statement fails while the *result* is iterated rather than inside the session call the
+boundary wrapped. A swallowed failure there poisoned the transaction with nothing recording it, `is_active` stayed
+true, and the boundary returned success for work Postgres had thrown away. Guarding it properly would mean proxying
+the result object and everything it hands back, so the two methods are refused instead. That costs nothing here,
+where nothing streams, and it keeps the guarantee absolute rather than almost.
+
 `current_session()` hands back a `BoundarySession`, not the `AsyncSession` itself. Everything a DAO needs passes
-straight through, but `commit`, `rollback`, `close`, `begin`, `begin_nested`, `connection`, `get_transaction` and
-`sync_session` raise `TransactionNotYours`. Without that, a single `await current_session().commit()` anywhere inside
-the boundary would split it, and the half that ran before the call would survive the rollback of the half that ran
-after it. The wrapper also goes dead when the boundary does, because an `AsyncSession` autobegins on next use and a
-session kept past its boundary would otherwise open a second transaction that nothing can ever commit.
+straight through, but `commit`, `rollback`, `close`, `aclose`, `begin`, `begin_nested`, `connection`,
+`get_transaction`, `sync_session`, `stream` and `stream_scalars` raise `TransactionNotYours`. Without that, a single
+`await current_session().commit()` anywhere inside the boundary would split it, and the half that ran before the call
+would survive the rollback of the half that ran after it. The wrapper also goes dead when the boundary does, because
+an `AsyncSession` autobegins on next use and a session kept past its boundary would otherwise open a second transaction
+that nothing can ever commit.
 
 It is a guard against a mistake, not a sandbox. `_session` is still an attribute and raw `COMMIT` is still a string, so
 business code that means to break out of the boundary can. Nothing in Python can stop that, and pretending otherwise
@@ -67,15 +75,15 @@ on any exception, so the decorator has no `try/except` around business logic and
 - **One decorator marks the boundary** — `@transactional` on a service method is the only transaction code in the project.
 - **Automatic propagation** — a nested call, including a call into a different service, joins the caller's transaction instead of opening a second one.
 - **Rollback-only participation** — a failed joined call poisons the transaction, so swallowing the exception cannot produce a half-committed transfer.
-- **A returned boundary really committed** — any `DBAPIError` off the session poisons the transaction even if the caller swallows it, so success is never reported for work Postgres threw away.
-- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `connection` and `get_transaction` raise instead of splitting the boundary, and the wrapper dies with its boundary.
+- **A returned boundary really committed** — any `DBAPIError` off the session poisons the transaction even if the caller swallows it, so success is never reported for work Postgres threw away. The one call that could not be watched that way, `stream()`, is refused rather than left open as a hole.
+- **The session is not the caller's to commit** — DAOs get a `BoundarySession`; `commit`, `rollback`, `close`, `connection`, `get_transaction` and `stream` raise instead of splitting the boundary or hiding a failure, and the wrapper dies with its boundary.
 - **Contention handled with row locks** — `SELECT ... FOR UPDATE` serialises the read-modify-write per account, so concurrent deposits cannot lose updates.
 - **Deadlock-free by lock ordering** — a transfer locks both accounts in ascending id order, and a ledger entry takes the same lock before its foreign keys do, so no two writers queue in opposite orders.
 - **Money is money** — amounts finer than a cent, non-finite, or too large for `Numeric(18, 2)` are refused, and so is a deposit whose *resulting balance* would not fit, because rounding each leg of a transfer separately invents money.
 - **Invisible session** — controller, DAO and models never take, pass or close a session; `current_session()` finds it.
 - **Rollback proven against real Postgres** — the ledger row is flushed before the money moves, so a failure rolls back a write that already reached the database.
 - **The database enforces it too** — `CHECK (balance >= 0)` and foreign keys from `ledger` to `accounts`, so a bug in the service cannot leave a negative balance or an orphan ledger row behind.
-- **Bounded waiting** — `lock_timeout` and `statement_timeout` are set on every connection, so a stalled transaction cannot block a hot account forever; the wait surfaces as `503` rather than a hang.
+- **Bounded waiting** — `lock_timeout` and `statement_timeout` are set on every connection, so a stalled transaction cannot block a hot account forever, and a request that cannot get a connection out of the pool gives up rather than queueing behind it; all three surface as `503` rather than a hang.
 - **Frozen views cross the boundary** — the service returns dataclasses, never ORM entities, so nothing detached ever reaches the controller.
 - **Task-isolated context** — `ContextVar` gives every concurrent request its own session, and a task or thread spawned inside a boundary is refused that session rather than sharing it.
 - **Cancellation is a rollback** — a joined call killed by a timeout poisons the transaction, so a caller that swallows the `TimeoutError` still cannot commit.
@@ -114,9 +122,11 @@ The UI is at `http://localhost:8000/` and Swagger UI at `http://localhost:8000/d
 
 An amount that is not money — finer than a cent, non-finite, too large for the column, or large enough that the
 resulting balance would not fit — is a `400`, and an id or an owner outside what the schema can hold is a `422` from the
-request model. A wait longer than `lock_timeout` is a `503`. No input reaches Postgres in a shape it has to reject, so
-the `IntegrityError` and `DataError` handlers in the controller are there for the bug that gets past the service, not
-for the normal path.
+request model. A wait longer than `lock_timeout` is a `503`, and so is a wait longer than the pool's `pool_timeout`:
+SQLAlchemy raises its own `TimeoutError` for a full pool, which is not an `OperationalError`, so it needs a handler of
+its own or a queue that is merely full reaches the caller as a `500`. No input reaches Postgres in a shape it has to
+reject, so the `IntegrityError` and `DataError` handlers in the controller are there for the bug that gets past the
+service, not for the normal path.
 
 ```bash
 curl -X POST http://localhost:8000/api/transfers \
@@ -200,7 +210,10 @@ locked row is the row the code reasons about.
 **Ascending lock order in `transfer()`.** Before moving anything, `transfer()` locks both accounts in one
 `WHERE id IN (...) ORDER BY id FOR UPDATE`. Postgres puts its `LockRows` node above the `Sort`, so the rows are locked
 in ascending id order, and two opposite transfers queue on the same first row instead of grabbing one each and waiting
-forever.
+forever. Drop the `ORDER BY` and `LockRows` sits straight on the scan, which locks in heap order instead — and heap
+order is not id order for long, because `owner` is indexed and a non-HOT update moves a row's tuple past its
+neighbour. The contention tests cannot see that on two rows inserted in id order, so
+`test_both_accounts_are_locked_in_ascending_id_order` reverses the heap first and then pins the order the DAO returns.
 
 What the suite checks, all automated in `tests/test_contention.py`:
 
@@ -221,6 +234,8 @@ Honest limits, since this is a POC and not a payment system:
 - `withdraw()` and `deposit()` re-lock the row they were handed, because both are callable on their own and have to be safe that way. A transfer therefore spends six round trips where four would do. The redundant locks are already held, so they cost latency and never risk.
 - The lock is per account row, so unrelated accounts never block each other, but a hot account serialises every transfer that touches it. That is the intended trade: correctness first.
 - The refusals in `BoundarySession` are a guard against a mistake, not a security boundary. Business code that reaches past it — `_session`, or a raw `COMMIT` string — splits the transaction, and neither the rollback-only flag nor the liveness check will notice. Python has no way to prevent that; the tests pin the mistakes people actually make.
+- A task spawned inside a boundary is refused the session, and the refusal is total: it cannot open a transaction of its own either. `asyncio.gather()` of two service calls, `asyncio.shield()`, a `TaskGroup` and any background work all raise `CrossTaskTransaction` from inside a boundary, and a fire-and-forget `create_task()` fails where nobody retrieves the exception while the boundary commits around it. Fan-out has to start outside the boundary, or after it returns.
+- Streaming is refused rather than guarded. `stream()` and `stream_scalars()` are the only session calls whose failure the boundary cannot observe, so a project that needs server-side cursors has to proxy the result object before it can have both.
 - The schema is `create_all`, not migrations. The constraints are DDL, so a database created before them keeps the old shape; `podman-compose down -v` once is what applies them to an existing volume.
 
 ## Key Design Decisions
@@ -242,6 +257,12 @@ class BoundarySession:
         if name in OWNED_BY_THE_BOUNDARY:
             raise TransactionNotYours(
                 f"{name}() belongs to @transactional, not to the code inside it"
+            )
+        if name in UNGUARDABLE:
+            raise TransactionNotYours(
+                f"{name}() raises from the cursor while the result is iterated, where "
+                "the boundary cannot see it; use execute() so a failure poisons the "
+                "transaction instead of being committed over"
             )
         attribute = getattr(self._session, name)
         if not inspect.iscoroutinefunction(attribute):
@@ -328,16 +349,18 @@ to the other, so twenty of them mint a cent each and `CHECK (balance >= 0)` neve
 is conservation, not sign. `_check_money()` refuses anything non-finite, too large for the column, or that survives a
 `quantize()` to two places with a different value — testing the value and not the exponent, so `10.00000` and `1E+1`
 are both accepted as the same ten. `_check_balance()` then refuses a deposit whose *sum* would overflow the column,
-because an amount that fits is not the same as a balance that fits. `LedgerService.record()` runs the same check as
+because an amount that fits is not the same as a balance that fits. `LedgerService.record()` runs the same checks as
 `BankService`: the README calls it a boundary of its own, so it cannot lean on `transfer()` having validated first.
+That covers the ids as well as the amount — `set()` collapses a pair of equal ids to a single lock and both foreign
+keys are satisfied, so without the check `record()` would write a row saying an account paid itself.
 The views quantize, so the `Decimal` a caller gets back is the one the row holds.
 
 **Views cross the boundary, entities do not.** A service method returns a frozen `AccountView` or `LedgerView` built
 while the transaction is still open, not the ORM entity. An entity handed to the controller is detached the moment the
-session closes, so any attribute the session had not already loaded raises `DetachedInstanceError` — today that would
-be nothing, because the models have no relationships and Postgres returns `created_at` from the `INSERT`, but it is a
-trap set for the first relationship anyone adds. Because the reads happen inside the boundary, `expire_on_commit` is
-left at its default instead of being switched off to paper over the problem.
+session closes, and because `expire_on_commit` is left at its default the commit expires every attribute first, so
+reading *any* column off it raises `DetachedInstanceError` — not only the relationship nobody has added yet. The trap
+is live today. The reads all happen inside the boundary, so `expire_on_commit` never had to be switched off to paper
+over the problem.
 
 **No retry, and that is the decision, not the gap.** A transaction Postgres aborts surfaces to the caller instead of
 being replayed, for three reasons.
@@ -400,7 +423,7 @@ Swagger UI at `/docs`, generated from the controller. Every route here is exactl
 ./build.sh         # venv with python3.14 and dependencies
 ./start.sh         # postgres 18 in podman, then the app on http://localhost:8000
 ./test-client.sh   # a commit and two rollbacks over HTTP, with balances after each
-./test.sh          # 51 tests against a real postgres, in a separate database
+./test.sh          # 56 tests against a real postgres, in a separate database
 ./stop.sh          # app down, postgres down
 ```
 
@@ -426,6 +449,7 @@ tests/test_api.py::test_an_owner_longer_than_the_column_is_rejected PASSED
 tests/test_api.py::test_an_account_id_outside_the_column_range_is_rejected PASSED
 tests/test_api.py::test_a_sub_cent_amount_is_rejected PASSED
 tests/test_api.py::test_an_amount_too_large_for_the_column_is_rejected PASSED
+tests/test_api.py::test_a_request_that_cannot_get_a_connection_is_unavailable_not_a_crash PASSED
 tests/test_contention.py::test_concurrent_withdrawals_cannot_overdraw_the_account PASSED
 tests/test_contention.py::test_concurrent_deposits_do_not_lose_updates PASSED
 tests/test_contention.py::test_transfers_in_opposite_directions_do_not_deadlock PASSED
@@ -442,6 +466,7 @@ tests/test_money.py::test_the_returned_view_is_the_value_the_database_kept PASSE
 tests/test_money.py::test_trailing_zeros_are_not_finer_than_a_cent PASSED
 tests/test_money.py::test_a_deposit_that_would_overflow_the_column_is_refused PASSED
 tests/test_money.py::test_the_ledger_refuses_an_amount_the_bank_would_refuse PASSED
+tests/test_money.py::test_the_ledger_refuses_a_transfer_to_the_same_account PASSED
 tests/test_transaction_boundary.py::test_committed_work_is_visible_to_the_next_transaction PASSED
 tests/test_transaction_boundary.py::test_transfer_commits_both_legs_and_the_ledger_together PASSED
 tests/test_transaction_boundary.py::test_insufficient_funds_rolls_back_the_ledger_entry PASSED
@@ -469,6 +494,9 @@ tests/test_transaction_boundary.py::test_a_lock_helper_cannot_hand_an_entity_acr
 tests/test_transaction_boundary.py::test_a_swallowed_select_error_cannot_be_reported_as_success PASSED
 tests/test_transaction_boundary.py::test_a_thread_inside_a_boundary_cannot_borrow_the_session PASSED
 tests/test_transaction_boundary.py::test_a_session_captured_inside_a_boundary_is_dead_outside_it PASSED
+tests/test_transaction_boundary.py::test_a_streamed_error_cannot_be_committed_over PASSED
+tests/test_transaction_boundary.py::test_a_transaction_ended_behind_the_boundarys_back_is_not_a_commit PASSED
+tests/test_transaction_boundary.py::test_both_accounts_are_locked_in_ascending_id_order PASSED
 
-51 passed
+56 passed
 ```

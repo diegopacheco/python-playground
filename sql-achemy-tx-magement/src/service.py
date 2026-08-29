@@ -58,6 +58,12 @@ def _check_amount(value: Decimal) -> None:
         raise InvalidAmount("amount must be greater than zero")
 
 
+def _check_transfer(source_id: int, target_id: int, amount: Decimal) -> None:
+    if source_id == target_id:
+        raise InvalidTransfer("source and target must be different accounts")
+    _check_amount(amount)
+
+
 def _check_balance(value: Decimal) -> None:
     if value >= MAX_MONEY:
         raise InvalidAmount(f"a balance of {value} is too large to store")
@@ -86,7 +92,7 @@ class LedgerService:
     async def record(
         self, source_id: int, target_id: int, amount: Decimal
     ) -> LedgerView:
-        _check_amount(amount)
+        _check_transfer(source_id, target_id, amount)
         await self.accounts.find_all_for_update({source_id, target_id})
         return _ledger_view(await self.entries.insert(source_id, target_id, amount))
 
@@ -142,9 +148,7 @@ class BankService:
     async def transfer(
         self, source_id: int, target_id: int, amount: Decimal
     ) -> LedgerView:
-        if source_id == target_id:
-            raise InvalidTransfer("source and target must be different accounts")
-        _check_amount(amount)
+        _check_transfer(source_id, target_id, amount)
         await self.lock_accounts(source_id, target_id)
         entry = await self.ledger.record(source_id, target_id, amount)
         await self.withdraw(source_id, amount)

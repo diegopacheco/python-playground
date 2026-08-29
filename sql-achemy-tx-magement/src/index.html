@@ -137,47 +137,54 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        that nothing can ever commit.</p>
     <p class="note"><b>Lines 11&ndash;14</b> are what a DAO actually holds. <code>current_session()</code> hands back
        this wrapper, not the <code>AsyncSession</code>, so everything a DAO needs passes through but
-       <code>commit</code>, <code>rollback</code>, <code>close</code>, <code>begin</code>, <code>connection</code> and
-       <code>get_transaction</code> raise. One <code>await current_session().commit()</code> inside the boundary would
-       otherwise split it, and the half that ran before the call would survive the rollback of the half that ran after
-       it. It is a guard against a mistake and not a sandbox: <code>_session</code> is still an attribute.</p>
-    <p class="note"><b>Lines 15&ndash;28</b> are why a swallowed database error cannot be committed over. Every await a
+       <code>commit</code>, <code>rollback</code>, <code>close</code>, <code>aclose</code>, <code>begin</code>,
+       <code>connection</code> and <code>get_transaction</code> raise. One
+       <code>await current_session().commit()</code> inside the boundary would otherwise split it, and the half that
+       ran before the call would survive the rollback of the half that ran after it. It is a guard against a mistake
+       and not a sandbox: <code>_session</code> is still an attribute.</p>
+    <p class="note"><b>Lines 15&ndash;20</b> refuse <code>stream()</code> and <code>stream_scalars()</code>, which are
+       the one hole in the recorder below. A server-side cursor raises while the result is iterated, not inside the
+       session call the boundary wrapped, so a swallowed failure there left the transaction poisoned with nothing
+       recording it and the boundary returned success for work Postgres had thrown away. Guarding the result object
+       would mean proxying every way of reading it; refusing the two methods costs a POC that does not stream
+       nothing.</p>
+    <p class="note"><b>Lines 21&ndash;34</b> are why a swallowed database error cannot be committed over. Every await a
        DAO makes goes through here, so a <code>DBAPIError</code> is recorded as the failure that poisoned the context
        before the caller ever gets the chance to catch it. It has to happen here rather than at the commit: SQLAlchemy
        deactivates its <code>SessionTransaction</code> on a failed <em>flush</em> only, so after a failed
        <code>execute()</code> it still reports <code>is_active</code> true while psycopg reports the connection
        <code>INERROR</code>, and the COMMIT that follows is a silent no-op.</p>
-    <p class="note"><b>Lines 31&ndash;44</b> keep the session on the task that opened it. A <code>ContextVar</code> is
+    <p class="note"><b>Lines 37&ndash;50</b> keep the session on the task that opened it. A <code>ContextVar</code> is
        copied into every task spawned inside the boundary, so an <code>asyncio.gather()</code> of service calls would
        otherwise drive one <code>AsyncSession</code> from several tasks at once. A worker thread from
        <code>asyncio.to_thread()</code> gets the copy too and has no running loop, which is why the task lookup answers
        "no task" instead of raising about the event loop.</p>
-    <p class="note"><b>Line 52</b> is the propagation rule. A context already set means a transaction is open, so the
+    <p class="note"><b>Line 58</b> is the propagation rule. A context already set means a transaction is open, so the
        call joins it and the decorator gets out of the way. This is Spring's <code>REQUIRED</code>.</p>
-    <p class="note"><b>Lines 55&ndash;58</b> are participation semantics. A joined call that fails marks the whole
+    <p class="note"><b>Lines 61&ndash;64</b> are participation semantics. A joined call that fails marks the whole
        transaction rollback-only, so a caller cannot swallow the failure and commit half the work. The catch is
        <code>BaseException</code> because <code>asyncio.CancelledError</code> is not an <code>Exception</code>: a joined
        call killed by <code>asyncio.timeout()</code> has to poison the transaction too, or a swallowed
        <code>TimeoutError</code> commits half a transfer.</p>
-    <p class="note"><b>Line 64</b> is the boundary. <code>session.begin()</code> commits when the method returns and
+    <p class="note"><b>Line 70</b> is the boundary. <code>session.begin()</code> commits when the method returns and
        rolls back when it raises, so business logic is never wrapped in a swallowing <code>except</code>.</p>
-    <p class="note"><b>Lines 67&ndash;72</b> refuse the commit when a joined call already failed, the same way Spring
-       throws <code>UnexpectedRollbackException</code>. Line 68 compares identities so that a failure simply propagating
+    <p class="note"><b>Lines 73&ndash;78</b> refuse the commit when a joined call already failed, the same way Spring
+       throws <code>UnexpectedRollbackException</code>. Line 74 compares identities so that a failure simply propagating
        out of the boundary reaches the caller unchanged instead of being masked, and the exception that poisoned the
        transaction, not whatever the caller tripped over afterwards, becomes the <code>__cause__</code> of the
        rollback.</p>
-    <p class="note"><b>Lines 73&ndash;75</b> are the last thing between a return and a commit, and the second net behind
-       lines 15&ndash;28. Committing a transaction Postgres already killed is a silent no-op, so without a check the
+    <p class="note"><b>Lines 79&ndash;81</b> are the last thing between a return and a commit, and the second net behind
+       lines 21&ndash;34. Committing a transaction Postgres already killed is a silent no-op, so without a check the
        boundary would return success for work the database threw away. This one catches a transaction that ended some
        other way than a statement error.</p>
-    <p class="note"><b>Lines 77&ndash;79</b> close the context and restore the previous one in a <code>finally</code>,
+    <p class="note"><b>Lines 83&ndash;85</b> close the context and restore the previous one in a <code>finally</code>,
        so a rolled-back call leaves nothing behind for the next call on the same task.</p>
   </div>
   <div class="card">
     <h2>src/service.py &mdash; one boundary, four participants</h2>
     <pre><ol class="code" id="code2"></ol></pre>
-    <p class="note"><b>Line 6</b> locks both rows, <b>line 7</b> calls <code>LedgerService</code>, a different service
-       with its own <code>@transactional</code> methods, and <b>lines 8&ndash;9</b> call back into this same service.
+    <p class="note"><b>Line 4</b> locks both rows, <b>line 5</b> calls <code>LedgerService</code>, a different service
+       with its own <code>@transactional</code> methods, and <b>lines 6&ndash;7</b> call back into this same service.
        Every one of them runs inside the one transaction that line 1 opened, and the DAOs underneath find it through
        <code>current_session()</code>. The lock comes before the ledger row because it is what proves both accounts
        exist: a missing account has to fail as <code>AccountNotFound</code> and a <code>404</code>, not as a foreign key
@@ -258,6 +265,12 @@ const TX_CODE = `class BoundarySession:
             raise TransactionNotYours(
                 f"{name}() belongs to @transactional, not to the code inside it"
             )
+        if name in UNGUARDABLE:
+            raise TransactionNotYours(
+                f"{name}() raises from the cursor while the result is iterated, where "
+                "the boundary cannot see it; use execute() so a failure poisons the "
+                "transaction instead of being committed over"
+            )
         attribute = getattr(self._session, name)
         if not inspect.iscoroutinefunction(attribute):
             return attribute
@@ -328,9 +341,7 @@ def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitab
 
 const SERVICE_CODE = `@transactional
 async def transfer(self, source_id: int, target_id: int, amount: Decimal) -> LedgerView:
-    if source_id == target_id:
-        raise InvalidTransfer("source and target must be different accounts")
-    self._check_amount(amount)
+    _check_transfer(source_id, target_id, amount)
     await self.lock_accounts(source_id, target_id)
     entry = await self.ledger.record(source_id, target_id, amount)
     await self.withdraw(source_id, amount)

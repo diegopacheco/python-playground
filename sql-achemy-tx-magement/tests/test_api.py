@@ -1,10 +1,15 @@
+import asyncio
 from decimal import Decimal
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import tx
 from controller import app
+from db import DATABASE_URL, TIMEOUTS
 from service import BankService
+from tx import transactional
 
 
 @pytest.fixture
@@ -113,3 +118,41 @@ async def test_an_amount_too_large_for_the_column_is_rejected(
 
     assert response.status_code == 400
     assert (await client.get(f"/api/accounts/{account.id}")).json()["balance"] == "100.00"
+
+
+async def test_a_request_that_cannot_get_a_connection_is_unavailable_not_a_crash(
+    client: httpx.AsyncClient, bank: BankService, monkeypatch: pytest.MonkeyPatch
+):
+    """lock_timeout bounds the wait for a row and arrives as an OperationalError. The
+    wait for a connection out of the pool does not: SQLAlchemy raises its own
+    TimeoutError, which is not an OperationalError, so it used to miss the 503 handler
+    and leave the caller a 500 for a queue that was merely full."""
+    account = await bank.open_account("alice", Decimal("100.00"))
+    one_connection = create_async_engine(
+        DATABASE_URL,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=1,
+        connect_args={"options": TIMEOUTS},
+    )
+    monkeypatch.setattr(tx, "session_factory", async_sessionmaker(one_connection))
+    holding = asyncio.Event()
+
+    @transactional
+    async def hold_the_only_connection() -> None:
+        await bank.list_accounts()
+        holding.set()
+        await asyncio.sleep(5)
+
+    hog = asyncio.create_task(hold_the_only_connection())
+    await holding.wait()
+    try:
+        response = await client.get(f"/api/accounts/{account.id}")
+        assert response.status_code == 503
+    finally:
+        hog.cancel()
+        try:
+            await hog
+        except BaseException:
+            pass
+        await one_connection.dispose()

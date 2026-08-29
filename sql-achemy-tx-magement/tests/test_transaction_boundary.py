@@ -439,3 +439,72 @@ async def test_a_session_captured_inside_a_boundary_is_dead_outside_it(
 
     with pytest.raises(NoActiveTransaction):
         await session.execute(text("select 1"))
+
+
+async def test_a_streamed_error_cannot_be_committed_over(bank: BankService):
+    """stream() opens a server-side cursor, so the statement fails while the result is
+    iterated rather than inside a session call the boundary wraps. Nothing records the
+    DBAPIError, SQLAlchemy still reports is_active true, and a caller who swallows it
+    gets success for work Postgres threw away. The boundary refuses the method instead."""
+    @transactional
+    async def caller() -> None:
+        await current_session().stream(text("select 1"))
+
+    with pytest.raises(TransactionNotYours):
+        await caller()
+
+    @transactional
+    async def scalars_caller() -> None:
+        await current_session().stream_scalars(text("select 1"))
+
+    with pytest.raises(TransactionNotYours):
+        await scalars_caller()
+
+
+async def test_a_transaction_ended_behind_the_boundarys_back_is_not_a_commit(
+    bank: BankService,
+):
+    """The liveness check is the net for a transaction that ended without any DBAPIError
+    to record. Reaching past the wrapper to end it leaves nothing to commit, and the
+    boundary has to say so instead of returning success."""
+    await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def caller() -> str:
+        await AccountDAO().insert("carol", Decimal("777.00"))
+        await current_session()._session.rollback()
+        return "the work is done"
+
+    with pytest.raises(UnexpectedRollback):
+        await caller()
+
+    assert [account.owner for account in await bank.list_accounts()] == ["alice"]
+
+
+async def test_both_accounts_are_locked_in_ascending_id_order(bank: BankService):
+    """Two transfers in opposite directions only queue safely if both take the row locks
+    in the same order. Postgres locks in the order the scan produces rows, which is heap
+    order, and a non-HOT update moves a row's tuple: owner is indexed, so renaming the
+    lower id puts it physically after the higher one. ORDER BY id is what survives that."""
+    low = await bank.open_account("alice", Decimal("100.00"))
+    high = await bank.open_account("bob", Decimal("100.00"))
+
+    @transactional
+    async def reorder_the_heap() -> list[int]:
+        session = current_session()
+        await session.execute(
+            text("update accounts set owner = 'moved' where id = :id"), {"id": low.id}
+        )
+        unordered = await session.execute(
+            text("select id from accounts where id in (:a, :b) for update"),
+            {"a": low.id, "b": high.id},
+        )
+        return list(unordered.scalars())
+
+    assert await reorder_the_heap() == [high.id, low.id], "heap order is still id order"
+
+    @transactional
+    async def locked() -> list[int]:
+        return [a.id for a in await AccountDAO().find_all_for_update([high.id, low.id])]
+
+    assert await locked() == [low.id, high.id]
