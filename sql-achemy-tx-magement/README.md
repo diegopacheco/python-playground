@@ -829,6 +829,13 @@ The suite drops and recreates the schema between tests, so it runs against `bank
 `db-start.sh` creates next to `bank_db`. Running the tests therefore never touches the data the app is holding. `tests/conftest.py`
 sets that URL before importing anything, and `TEST_DATABASE_URL` overrides it.
 
+That also means two runs at once are not two runs, they are one run being deleted by another: the schema is dropped
+before *every* test, so a second pytest against the same database takes the first one's rows out from under it and both
+come back with a double-digit pile of failures that read exactly like bugs in the boundary. It cost an afternoon once,
+so it is refused rather than left to be rediscovered — `conftest.py` takes a Postgres advisory lock for the length of
+the run, and a second run says so and stops instead of starting. The lock dies with the connection, so a killed run
+does not leave it held, and `TEST_DATABASE_URL` is still the way to run two suites at the same time on purpose.
+
 ```
 tests/test_api.py::test_a_blank_owner_is_refused_by_the_layer_that_can_see_it PASSED
 tests/test_api.py::test_a_duplicate_owner_is_a_conflict_not_a_crash PASSED
