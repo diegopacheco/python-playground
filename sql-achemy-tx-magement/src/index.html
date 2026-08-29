@@ -132,23 +132,34 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
   <div class="card">
     <h2>src/tx.py &mdash; the whole mechanism</h2>
     <pre><ol class="code" id="code"></ol></pre>
-    <p class="note"><b>Line 5</b> is the propagation rule. A context already set means a transaction is open, so the
+    <p class="note"><b>Lines 3&ndash;6</b> keep the session on the task that opened it. A <code>ContextVar</code> is
+       copied into every task spawned inside the boundary, so an <code>asyncio.gather()</code> of service calls would
+       otherwise drive one <code>AsyncSession</code> from several tasks at once. The lookup refuses instead.</p>
+    <p class="note"><b>Line 14</b> is the propagation rule. A context already set means a transaction is open, so the
        call joins it and the decorator gets out of the way. This is Spring's <code>REQUIRED</code>.</p>
-    <p class="note"><b>Lines 8&ndash;10</b> are participation semantics. A joined call that fails marks the whole
-       transaction rollback-only, so a caller cannot swallow the failure and commit half the work.</p>
-    <p class="note"><b>Line 15</b> is the boundary. <code>session.begin()</code> commits when the method returns and
-       rolls back when it raises, so there is no <code>except</code> around business logic and no error is swallowed.</p>
-    <p class="note"><b>Lines 17&ndash;20</b> refuse the commit when a joined call already failed, the same way Spring
-       throws <code>UnexpectedRollbackException</code>.</p>
-    <p class="note"><b>Line 23</b> restores the previous context in a <code>finally</code>, so a rolled-back call leaves
+    <p class="note"><b>Lines 17&ndash;20</b> are participation semantics. A joined call that fails marks the whole
+       transaction rollback-only, so a caller cannot swallow the failure and commit half the work. The catch is
+       <code>BaseException</code> because <code>asyncio.CancelledError</code> is not an <code>Exception</code>: a joined
+       call killed by <code>asyncio.timeout()</code> has to poison the transaction too, or a swallowed
+       <code>TimeoutError</code> commits half a transfer.</p>
+    <p class="note"><b>Line 25</b> is the boundary. <code>session.begin()</code> commits when the method returns and
+       rolls back when it raises, so business logic is never wrapped in a swallowing <code>except</code>.</p>
+    <p class="note"><b>Lines 28&ndash;33</b> refuse the commit when a joined call already failed, the same way Spring
+       throws <code>UnexpectedRollbackException</code>. Line 29 compares identities so that a failure simply propagating
+       out of the boundary reaches the caller unchanged instead of being masked, and the remembered exception becomes
+       the <code>__cause__</code> of the rollback.</p>
+    <p class="note"><b>Line 36</b> restores the previous context in a <code>finally</code>, so a rolled-back call leaves
        nothing behind for the next call on the same task.</p>
   </div>
   <div class="card">
     <h2>src/service.py &mdash; one boundary, four participants</h2>
     <pre><ol class="code" id="code2"></ol></pre>
-    <p class="note"><b>Line 4</b> calls <code>LedgerService</code>, a different service with its own
-       <code>@transactional</code> methods. <b>Lines 5&ndash;6</b> call back into this same service. All four run inside
-       the one transaction that line 1 opened, and the DAOs underneath find it through <code>current_session()</code>.</p>
+    <p class="note"><b>Line 6</b> locks both rows, <b>line 7</b> calls <code>LedgerService</code>, a different service
+       with its own <code>@transactional</code> methods, and <b>lines 8&ndash;9</b> call back into this same service.
+       Every one of them runs inside the one transaction that line 1 opened, and the DAOs underneath find it through
+       <code>current_session()</code>. The lock comes before the ledger row because it is what proves both accounts
+       exist: a missing account has to fail as <code>AccountNotFound</code> and a <code>404</code>, not as a foreign key
+       violation.</p>
   </div>
   <div class="card">
     <h2>Contention &mdash; the boundary is not enough on its own</h2>
@@ -157,9 +168,14 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
        back: two concurrent deposits both read the same number and one overwrites the other. Ten concurrent deposits of
        10.00 into an empty account produced <b>20.00</b> instead of 100.00 before this lock existed.</p>
     <p class="note"><code>SELECT ... FOR UPDATE</code> makes the read block until any other transaction holding that row
-       commits, so the read-modify-write becomes serial per account. <code>sorted()</code> is the other half: both rows
-       are locked in ascending id order, so <code>alice &rarr; bob</code> and <code>bob &rarr; alice</code> running at
-       the same time cannot each hold the row the other one wants.</p>
+       commits, so the read-modify-write becomes serial per account. <code>ORDER BY id</code> is the other half:
+       Postgres puts its <code>LockRows</code> node above the <code>Sort</code>, so both rows are locked in ascending id
+       order and <code>alice &rarr; bob</code> and <code>bob &rarr; alice</code> running at the same time cannot each
+       hold the row the other one wants.</p>
+    <p class="note">The database is the backstop, not the referee. <code>CHECK (balance >= 0)</code> and the foreign
+       keys from <code>ledger</code> to <code>accounts</code> mean a bug in the service cannot leave a negative balance
+       or an orphan row behind, and <code>lock_timeout</code> means a stalled transaction cannot hold a hot account
+       forever.</p>
     <p class="note">Both claims are automated in <code>tests/test_contention.py</code>, which fails on three tests when
        the lock is removed.</p>
   </div>
@@ -173,6 +189,10 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
         <tr><td>Rollback</td><td>unchecked exceptions only</td><td>any exception, Python has no checked ones</td></tr>
         <tr><td>Joined call fails, caller swallows it</td><td>rollback-only, UnexpectedRollbackException</td>
             <td>rollback-only, UnexpectedRollback</td></tr>
+        <tr><td>Joined call cancelled, caller swallows it</td><td>rollback-only</td>
+            <td>rollback-only, CancelledError is caught even though it is not an Exception</td></tr>
+        <tr><td>Transaction reused from another thread or task</td><td>a new thread simply has none</td>
+            <td>CrossTaskTransaction, a spawned task is refused the inherited session</td></tr>
         <tr><td>Self-invocation</td><td>bypasses the proxy, no transaction</td>
             <td>still participates, the decorator wraps the function itself</td></tr>
         <tr><td>Transaction is bound to</td><td>the thread</td><td>the asyncio task</td></tr>
@@ -184,26 +204,39 @@ ol.code li::before{content:counter(l);position:absolute;left:0;width:42px;text-a
 </main>
 
 <script>
-const TX_CODE = `def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+const TX_CODE = `def _active() -> TransactionContext | None:
+    context = _current.get()
+    if context is not None and context.task is not asyncio.current_task():
+        raise CrossTaskTransaction(
+            "the transaction belongs to another task, an AsyncSession cannot be shared"
+        )
+    return context
+
+
+def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> T:
-        joined = _current.get()
+        joined = _active()
         if joined is not None:
             try:
                 return await func(*args, **kwargs)
-            except Exception:
-                joined.rollback_only = True
+            except BaseException as error:
+                if joined.failure is None:
+                    joined.failure = error
                 raise
         async with session_factory() as session:
-            context = TransactionContext(session)
+            context = TransactionContext(session, asyncio.current_task())
             token = _current.set(context)
             try:
                 async with session.begin():
-                    result = await func(*args, **kwargs)
-                    if context.rollback_only:
-                        raise UnexpectedRollback(
-                            "a joined call failed and marked the transaction rollback-only"
-                        )
+                    try:
+                        result = await func(*args, **kwargs)
+                    except BaseException as error:
+                        if context.failure is not None and error is not context.failure:
+                            raise UnexpectedRollback(ROLLBACK_ONLY) from error
+                        raise
+                    if context.failure is not None:
+                        raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
                     return result
             finally:
                 _current.reset(token)
@@ -211,26 +244,30 @@ const TX_CODE = `def transactional[T](func: Callable[..., Awaitable[T]]) -> Call
     return wrapper`;
 
 const SERVICE_CODE = `@transactional
-async def transfer(self, source_id: int, target_id: int, amount: Decimal) -> LedgerEntry:
+async def transfer(self, source_id: int, target_id: int, amount: Decimal) -> LedgerView:
+    if source_id == target_id:
+        raise InvalidTransfer("source and target must be different accounts")
     self._check_amount(amount)
+    await self.lock_accounts(source_id, target_id)
     entry = await self.ledger.record(source_id, target_id, amount)
     await self.withdraw(source_id, amount)
     await self.deposit(target_id, amount)
     return entry`;
 
 const LOCK_CODE = `# dao.py
-async def find_for_update(self, account_id: int) -> Account | None:
+async def find_all_for_update(self, account_ids: Iterable[int]) -> list[Account]:
     result = await current_session().execute(
         select(Account)
-        .where(Account.id == account_id)
+        .where(Account.id.in_(set(account_ids)))
+        .order_by(Account.id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    return result.scalar_one_or_none()
+    return list(result.scalars())
 
-# service.py, inside transfer()
-for account_id in sorted({source_id, target_id}):
-    await self.lock_account(account_id)`;
+# models.py
+__table_args__ = (CheckConstraint("balance >= 0", name="balance_non_negative"),)
+source_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))`;
 
 const KEYWORDS = /\b(async|await|def|return|if|is|not|None|try|finally|with|as|self|int)\b/;
 const RULE = /(#[^\n]*)|('[^'\n]*'|"[^"\n]*")|(@[A-Za-z_]\w*)|\b(async|await|def|return|if|is|not|None|try|finally|with|as|self)\b|([A-Za-z_]\w*)(?=\()/g;

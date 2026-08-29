@@ -5,10 +5,18 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.exc import OperationalError
 
 from db import create_schema
-from models import Account, LedgerEntry
-from service import AccountNotFound, BankService, InsufficientFunds, InvalidAmount
+from service import (
+    AccountNotFound,
+    AccountView,
+    BankService,
+    InsufficientFunds,
+    InvalidAmount,
+    InvalidTransfer,
+    LedgerView,
+)
 
 
 class OpenAccountRequest(BaseModel):
@@ -42,11 +50,11 @@ async def index() -> FileResponse:
     return FileResponse(INDEX)
 
 
-def as_account(account: Account) -> dict:
+def as_account(account: AccountView) -> dict:
     return {"id": account.id, "owner": account.owner, "balance": str(account.balance)}
 
 
-def as_entry(entry: LedgerEntry) -> dict:
+def as_entry(entry: LedgerView) -> dict:
     return {
         "id": entry.id,
         "source_id": entry.source_id,
@@ -69,6 +77,21 @@ async def handle_insufficient_funds(request: Request, exc: Exception) -> JSONRes
 @app.exception_handler(InvalidAmount)
 async def handle_invalid_amount(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.exception_handler(InvalidTransfer)
+async def handle_invalid_transfer(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.exception_handler(OperationalError)
+async def handle_database_unavailable(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"error": "the database refused to wait for a lock or was unreachable"},
+    )
 
 
 @app.post("/api/accounts", status_code=201)

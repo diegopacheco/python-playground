@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -25,6 +26,16 @@ class AccountDAO:
             .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
+
+    async def find_all_for_update(self, account_ids: Iterable[int]) -> list[Account]:
+        result = await current_session().execute(
+            select(Account)
+            .where(Account.id.in_(set(account_ids)))
+            .order_by(Account.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return list(result.scalars())
 
     async def find_all(self) -> list[Account]:
         result = await current_session().execute(select(Account).order_by(Account.id))

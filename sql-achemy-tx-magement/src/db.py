@@ -7,14 +7,17 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+psycopg://bank_user:bank_pass@localhost:5434/bank_db",
 )
+TIMEOUTS = "-c lock_timeout=5000 -c statement_timeout=15000"
 
 
 class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
-session_factory = async_sessionmaker(engine, expire_on_commit=False)
+engine = create_async_engine(
+    DATABASE_URL, pool_pre_ping=True, connect_args={"options": TIMEOUTS}
+)
+session_factory = async_sessionmaker(engine)
 
 
 async def create_schema() -> None:

@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 from dao import AccountDAO, LedgerDAO
@@ -17,6 +19,36 @@ class InvalidAmount(Exception):
     pass
 
 
+class InvalidTransfer(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class AccountView:
+    id: int
+    owner: str
+    balance: Decimal
+
+
+@dataclass(frozen=True)
+class LedgerView:
+    id: int
+    source_id: int
+    target_id: int
+    amount: Decimal
+    created_at: datetime
+
+
+def _account_view(account: Account) -> AccountView:
+    return AccountView(account.id, account.owner, account.balance)
+
+
+def _ledger_view(entry: LedgerEntry) -> LedgerView:
+    return LedgerView(
+        entry.id, entry.source_id, entry.target_id, entry.amount, entry.created_at
+    )
+
+
 class LedgerService:
     def __init__(self) -> None:
         self.entries = LedgerDAO()
@@ -24,12 +56,12 @@ class LedgerService:
     @transactional
     async def record(
         self, source_id: int, target_id: int, amount: Decimal
-    ) -> LedgerEntry:
-        return await self.entries.insert(source_id, target_id, amount)
+    ) -> LedgerView:
+        return _ledger_view(await self.entries.insert(source_id, target_id, amount))
 
     @transactional
-    async def list_all(self) -> list[LedgerEntry]:
-        return await self.entries.find_all()
+    async def list_all(self) -> list[LedgerView]:
+        return [_ledger_view(entry) for entry in await self.entries.find_all()]
 
 
 class BankService:
@@ -38,52 +70,57 @@ class BankService:
         self.ledger = LedgerService()
 
     @transactional
-    async def open_account(self, owner: str, initial_balance: Decimal) -> Account:
+    async def open_account(self, owner: str, initial_balance: Decimal) -> AccountView:
         if initial_balance < 0:
             raise InvalidAmount("initial balance cannot be negative")
-        return await self.accounts.insert(owner, initial_balance)
+        return _account_view(await self.accounts.insert(owner, initial_balance))
 
     @transactional
-    async def list_accounts(self) -> list[Account]:
-        return await self.accounts.find_all()
+    async def list_accounts(self) -> list[AccountView]:
+        return [_account_view(account) for account in await self.accounts.find_all()]
 
     @transactional
-    async def get_account(self, account_id: int) -> Account:
+    async def get_account(self, account_id: int) -> AccountView:
         account = await self.accounts.find(account_id)
         if account is None:
             raise AccountNotFound(f"account {account_id} does not exist")
-        return account
+        return _account_view(account)
 
     @transactional
-    async def deposit(self, account_id: int, amount: Decimal) -> Account:
+    async def deposit(self, account_id: int, amount: Decimal) -> AccountView:
         self._check_amount(amount)
         account = await self.lock_account(account_id)
-        return await self.accounts.update_balance(account, account.balance + amount)
+        return _account_view(
+            await self.accounts.update_balance(account, account.balance + amount)
+        )
 
     @transactional
-    async def withdraw(self, account_id: int, amount: Decimal) -> Account:
+    async def withdraw(self, account_id: int, amount: Decimal) -> AccountView:
         self._check_amount(amount)
         account = await self.lock_account(account_id)
         if account.balance < amount:
             raise InsufficientFunds(
                 f"account {account_id} has {account.balance}, cannot withdraw {amount}"
             )
-        return await self.accounts.update_balance(account, account.balance - amount)
+        return _account_view(
+            await self.accounts.update_balance(account, account.balance - amount)
+        )
 
     @transactional
     async def transfer(
         self, source_id: int, target_id: int, amount: Decimal
-    ) -> LedgerEntry:
+    ) -> LedgerView:
+        if source_id == target_id:
+            raise InvalidTransfer("source and target must be different accounts")
         self._check_amount(amount)
+        await self.lock_accounts(source_id, target_id)
         entry = await self.ledger.record(source_id, target_id, amount)
-        for account_id in sorted({source_id, target_id}):
-            await self.lock_account(account_id)
         await self.withdraw(source_id, amount)
         await self.deposit(target_id, amount)
         return entry
 
     @transactional
-    async def list_ledger(self) -> list[LedgerEntry]:
+    async def list_ledger(self) -> list[LedgerView]:
         return await self.ledger.list_all()
 
     @transactional
@@ -92,6 +129,15 @@ class BankService:
         if account is None:
             raise AccountNotFound(f"account {account_id} does not exist")
         return account
+
+    @transactional
+    async def lock_accounts(self, *account_ids: int) -> list[Account]:
+        accounts = await self.accounts.find_all_for_update(account_ids)
+        locked = {account.id for account in accounts}
+        for account_id in account_ids:
+            if account_id not in locked:
+                raise AccountNotFound(f"account {account_id} does not exist")
+        return accounts
 
     def _check_amount(self, amount: Decimal) -> None:
         if amount <= 0:

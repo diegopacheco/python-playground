@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -8,11 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import session_factory
 
+ROLLBACK_ONLY = "a joined call failed and marked the transaction rollback-only"
+
 
 @dataclass
 class TransactionContext:
     session: AsyncSession
-    rollback_only: bool = False
+    task: asyncio.Task[Any] | None
+    failure: BaseException | None = None
 
 
 _current: ContextVar[TransactionContext | None] = ContextVar("current", default=None)
@@ -22,12 +26,25 @@ class NoActiveTransaction(RuntimeError):
     pass
 
 
+class CrossTaskTransaction(RuntimeError):
+    pass
+
+
 class UnexpectedRollback(RuntimeError):
     pass
 
 
-def current_session() -> AsyncSession:
+def _active() -> TransactionContext | None:
     context = _current.get()
+    if context is not None and context.task is not asyncio.current_task():
+        raise CrossTaskTransaction(
+            "the transaction belongs to another task, an AsyncSession cannot be shared"
+        )
+    return context
+
+
+def current_session() -> AsyncSession:
+    context = _active()
     if context is None:
         raise NoActiveTransaction("no active transaction, caller is not @transactional")
     return context.session
@@ -36,23 +53,27 @@ def current_session() -> AsyncSession:
 def transactional[T](func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> T:
-        joined = _current.get()
+        joined = _active()
         if joined is not None:
             try:
                 return await func(*args, **kwargs)
-            except Exception:
-                joined.rollback_only = True
+            except BaseException as error:
+                if joined.failure is None:
+                    joined.failure = error
                 raise
         async with session_factory() as session:
-            context = TransactionContext(session)
+            context = TransactionContext(session, asyncio.current_task())
             token = _current.set(context)
             try:
                 async with session.begin():
-                    result = await func(*args, **kwargs)
-                    if context.rollback_only:
-                        raise UnexpectedRollback(
-                            "a joined call failed and marked the transaction rollback-only"
-                        )
+                    try:
+                        result = await func(*args, **kwargs)
+                    except BaseException as error:
+                        if context.failure is not None and error is not context.failure:
+                            raise UnexpectedRollback(ROLLBACK_ONLY) from error
+                        raise
+                    if context.failure is not None:
+                        raise UnexpectedRollback(ROLLBACK_ONLY) from context.failure
                     return result
             finally:
                 _current.reset(token)

@@ -2,10 +2,19 @@ import asyncio
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from dao import AccountDAO, LedgerDAO
-from service import AccountNotFound, BankService, InsufficientFunds, LedgerService
+from service import (
+    AccountNotFound,
+    BankService,
+    InsufficientFunds,
+    InvalidTransfer,
+    LedgerService,
+)
 from tx import (
+    CrossTaskTransaction,
     NoActiveTransaction,
     UnexpectedRollback,
     current_session,
@@ -45,7 +54,7 @@ async def test_insufficient_funds_rolls_back_the_ledger_entry(bank: BankService)
     assert (await bank.get_account(target.id)).balance == Decimal("10.00")
 
 
-async def test_missing_target_rolls_back_the_ledger_row_already_inserted(
+async def test_missing_target_is_refused_before_any_row_is_written(
     bank: BankService,
 ):
     source = await bank.open_account("alice", Decimal("100.00"))
@@ -176,9 +185,11 @@ async def test_call_into_another_service_joins_the_same_transaction(
 async def test_the_other_service_opens_its_own_transaction_when_called_alone(
     bank: BankService,
 ):
+    source = await bank.open_account("alice", Decimal("100.00"))
+    target = await bank.open_account("bob", Decimal("0.00"))
     ledger = LedgerService()
 
-    await ledger.record(1, 2, Decimal("5.00"))
+    await ledger.record(source.id, target.id, Decimal("5.00"))
 
     assert len(await bank.list_ledger()) == 1
 
@@ -217,3 +228,88 @@ async def test_rollback_only_does_not_leak_into_the_next_transaction(bank: BankS
 
     await bank.deposit(account.id, Decimal("5.00"))
     assert (await bank.get_account(account.id)).balance == Decimal("15.00")
+
+
+async def test_a_cancelled_joined_call_cannot_commit_its_partial_work(bank: BankService):
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def slow_leg() -> None:
+        await bank.deposit(account.id, Decimal("5.00"))
+        await asyncio.sleep(5)
+
+    @transactional
+    async def caller() -> None:
+        try:
+            async with asyncio.timeout(0.05):
+                await slow_leg()
+        except TimeoutError:
+            pass
+
+    with pytest.raises(UnexpectedRollback):
+        await caller()
+
+    assert (await bank.get_account(account.id)).balance == Decimal("10.00")
+
+
+async def test_a_swallowed_database_error_cannot_be_committed_over(bank: BankService):
+    await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def caller() -> list:
+        try:
+            await bank.open_account("alice", Decimal("5.00"))
+        except IntegrityError:
+            pass
+        return await bank.list_accounts()
+
+    with pytest.raises(UnexpectedRollback):
+        await caller()
+
+    assert len(await bank.list_accounts()) == 1
+
+
+async def test_a_spawned_task_cannot_borrow_the_callers_session(bank: BankService):
+    @transactional
+    async def caller() -> None:
+        await asyncio.create_task(bank.list_accounts())
+
+    with pytest.raises(CrossTaskTransaction):
+        await caller()
+
+
+async def test_a_transfer_to_the_same_account_is_rejected(bank: BankService):
+    account = await bank.open_account("alice", Decimal("100.00"))
+
+    with pytest.raises(InvalidTransfer):
+        await bank.transfer(account.id, account.id, Decimal("30.00"))
+
+    assert await bank.list_ledger() == []
+    assert (await bank.get_account(account.id)).balance == Decimal("100.00")
+
+
+async def test_the_ledger_cannot_reference_an_account_that_does_not_exist(
+    bank: BankService,
+):
+    source = await bank.open_account("alice", Decimal("100.00"))
+    ledger = LedgerService()
+
+    with pytest.raises(IntegrityError):
+        await ledger.record(source.id, 9999, Decimal("5.00"))
+
+    assert await bank.list_ledger() == []
+
+
+async def test_the_schema_refuses_a_negative_balance(bank: BankService):
+    account = await bank.open_account("alice", Decimal("10.00"))
+
+    @transactional
+    async def force_overdraft() -> None:
+        await current_session().execute(
+            text("update accounts set balance = -1 where id = :id"), {"id": account.id}
+        )
+
+    with pytest.raises(IntegrityError):
+        await force_overdraft()
+
+    assert (await bank.get_account(account.id)).balance == Decimal("10.00")

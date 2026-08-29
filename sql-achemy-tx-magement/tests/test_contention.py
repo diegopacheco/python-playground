@@ -68,11 +68,16 @@ async def test_money_is_conserved_under_concurrent_transfers(bank: BankService):
     before = await total_balance(bank)
 
     pairs = [(accounts[i % 4], accounts[(i + 1) % 4]) for i in range(12)]
-    await asyncio.gather(
+    results = await asyncio.gather(
         *(bank.transfer(s.id, t.id, Decimal("20.00")) for s, t in pairs),
         return_exceptions=True,
     )
 
+    committed = [r for r in results if not isinstance(r, BaseException)]
+    refused = [r for r in results if isinstance(r, BaseException)]
+    assert committed
+    assert all(isinstance(r, InsufficientFunds) for r in refused)
+    assert len(await bank.list_ledger()) == len(committed)
     assert await total_balance(bank) == before
     assert all(a.balance >= 0 for a in await bank.list_accounts())
 
