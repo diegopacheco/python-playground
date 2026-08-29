@@ -1,0 +1,40 @@
+sql-achemy-tx-magement/tests/test_attack.py
+  s_d707b9b0f92a17::t_07fa4cce93304b 3,6,16-17,23-24,29-30
+  s_d707b9b0f92a17::t_22722587d254e3 9
+  s_5cb11a5c8ac2cd::t_4162607ad255aa 1-2,5
+  s_d707b9b0f92a17::t_6440390ab38a55 4
+  s_d707b9b0f92a17::t_44283a59873cd8 10
+  s_116faac53e03cf::t_d00c0130304df9 7-8,11-15,18-22,25-28,31-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "ac3c5eded90977b19d8e93d88dfc3fdd98d99207",
+  "prompts": {},
+  "sessions": {
+    "s_116faac53e03cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c37a8c39-7acc-42a4-a4c4-ccc8dfe71e69",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    },
+    "s_5cb11a5c8ac2cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b7b16f8-5d9d-4c24-9e5b-92d859258863",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    },
+    "s_d707b9b0f92a17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "700aeda1-a736-4275-a879-4e72dd34e564",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
