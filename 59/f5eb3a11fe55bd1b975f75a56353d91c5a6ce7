@@ -1,0 +1,47 @@
+sql-achemy-tx-magement/tests/test_transaction_boundary.py
+  s_f2c8be6a8c0095::t_48b79e46999090 1982-1989,1993-2000,2006,2008-2027
+  s_f2c8be6a8c0095::t_47f6e9b66e92ba 351-389
+  s_f2c8be6a8c0095::t_140dbdf0dea7db 1990-1992,2001-2005,2007
+sql-achemy-tx-magement/README.md
+  s_f2c8be6a8c0095::t_4e34fa4b8cd605 963,1071,1174-1175,1187,1198
+  s_f2c8be6a8c0095::t_b84ad41cef6652 398-410
+  s_f2c8be6a8c0095::t_ddab436968d98a 654-688,705,739,743,747-748,752-753,757-758,767,773,776,796-824,854,865
+  s_f2c8be6a8c0095::t_c9d0148f6704d8 420
+  s_f2c8be6a8c0095::t_79e7de9912a22a 47
+  s_f2c8be6a8c0095::t_32ff386e1d5144 419
+  s_f2c8be6a8c0095::t_1d4d1076c0e054 427
+sql-achemy-tx-magement/src/tx.py
+  s_f2c8be6a8c0095::t_a69340f77b1f04 154-186
+  s_f2c8be6a8c0095::t_27531e1cdd9934 205
+  s_f2c8be6a8c0095::t_75801d1055e168 32-35
+  s_f2c8be6a8c0095::t_782b953bf28d5c 239,243,247-248,252-253,257-258
+  s_f2c8be6a8c0095::t_4c443546b00aac 267,273,276
+  s_f2c8be6a8c0095::t_4f48d39dd4babb 325-347,349-353
+  s_f2c8be6a8c0095::t_3f9f18a62c3bb2 383
+  s_f2c8be6a8c0095::t_ca1b82b514aeb7 348
+  s_f2c8be6a8c0095::t_b2e5784dac7b25 394
+  s_f2c8be6a8c0095::t_f42015e0cf9152 187-188
+sql-achemy-tx-magement/src/models.py
+  s_f2c8be6a8c0095::t_0b3ac4c63c1de2 23-26
+sql-achemy-tx-magement/src/index.html
+  s_f2c8be6a8c0095::t_2887fa0f676315 453-487,504,538,542,546-547,551-552,556-557,566,572,575,624-652,682,693
+  s_f2c8be6a8c0095::t_d26ee901cb352c 154,160-161,179,187-200,205,212,220,226-234,243,251,254,259,263-264,267,270-271,276,278,282-317
+sql-achemy-tx-magement/tests/test_api.py
+  s_f2c8be6a8c0095::t_38f22159c34f6a 719-720,725,728-731,736
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "59f5eb3a11fe55bd1b975f75a56353d91c5a6ce7",
+  "prompts": {},
+  "sessions": {
+    "s_f2c8be6a8c0095": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9361095e-6bbb-4da9-9ef6-009150fc9fed",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
