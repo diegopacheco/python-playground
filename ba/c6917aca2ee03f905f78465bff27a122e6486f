@@ -1,0 +1,20 @@
+postgres-gin-index-poc/README.md
+  s_1259e57a27d029::t_9f4d6250f3cb75 25-49,147-196
+  s_1259e57a27d029::t_29a7d35242269c 197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "bac6917aca2ee03f905f78465bff27a122e6486f",
+  "prompts": {},
+  "sessions": {
+    "s_1259e57a27d029": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d417f255-ca9e-4118-8ef8-9b74f7016f33",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
