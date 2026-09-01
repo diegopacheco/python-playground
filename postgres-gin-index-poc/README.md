@@ -47,7 +47,7 @@ scales with the size of the match set: a posting list of one row is nearly free,
 while a posting list of 12.500 rows sends the heap scan across every page of the
 table anyway, which is the same work the sequential scan was going to do.
 
-### What GIN Cannot Answer
+### What These GIN Indexes Cannot Answer
 
 GIN entries are terms, not sorted values. A posting list can say which rows contain
 `"price": 991.99` and nothing at all about which rows are above 990. So anything
@@ -57,7 +57,7 @@ these two op classes can serve, however selective it is:
 | Query | Why GIN cannot serve it | Use instead |
 | --- | --- | --- |
 | `data->>'sku' = 'SKU-4242'` | `->>` is a function on the column, the index is on `data` itself | `CREATE INDEX ON documents ((data->>'sku'))` |
-| `(data->>'price')::numeric > 990` | entries are terms, there is no ordered range to walk | `CREATE INDEX ON documents (((data->>'price')::numeric))` |
+| `(data->>'price')::numeric > 990` | `jsonb_ops` and `jsonb_path_ops` store terms, not ordered values | `CREATE INDEX ON documents (((data->>'price')::numeric))` |
 | `ORDER BY data->>'price'` | posting lists hold row locations, they carry no order | a btree index on that same expression |
 | `data->>'sku' LIKE '%42%'` | no op class extracts substrings of a value | a `pg_trgm` GIN index over `(data->>'sku')` |
 
@@ -66,10 +66,35 @@ above to this stack and rerunning the same three queries: `->>` equality 3.48 ms
 scan becomes 0.02 ms, the numeric range 6.63 ms becomes 0.10 ms, and the sort
 12.70 ms becomes 0.02 ms. The GIN indexes are untouched and unused by all three.
 
-Ranges are the sharpest edge here: GIN is an equality and containment structure, and
-a `BETWEEN` on a JSON field gets a sequential scan plus a cast on every row no matter
-how few rows come back. Reach for a btree expression index instead, and keep GIN for
-"which documents contain this".
+Ranges are the sharpest edge, and the one worth stating precisely, because the limit
+belongs to these two op classes rather than to GIN itself.
+
+Writing the range as jsonpath does not rescue it. `@?` and `@@` are GIN indexable
+operators, so they look like the way in, but GIN only extracts `accessor == constant`
+clauses out of a jsonpath pattern. A pure range has no equality clause to extract:
+`data @? '$.price ? (@ > 990)'` is a 9,17 ms sequential scan and `data @@ '$.price >
+990'` is 11,04 ms, both slower than the 6,75 ms cast. Mixing an equality in is worse
+than it looks, `data @? '$ ? (@.category == "books" && @.price > 990)'` does use the
+index, for the `category` half only, then rechecks the range across all 12.500 rows
+it found and removes 12.400 of them, ending at 1.569 blocks for a query that returns
+a handful of rows.
+
+GIN as a structure can do ranges, through the `btree_gin` op classes:
+
+```sql
+CREATE EXTENSION btree_gin;
+CREATE INDEX ON documents USING gin (((data->>'price')::numeric), data);
+```
+
+| Query | These GIN indexes | With `btree_gin` multicolumn | Plain btree expression |
+| --- | --- | --- | --- |
+| `(data->>'price')::numeric > 990` | 6,75 ms, 1.562 blocks | **0,12 ms, 67 blocks** | 0,10 ms, 66 blocks |
+| same range plus `data @> '{"category":"books"}'` | 3,78 ms, 1.569 blocks | **0,23 ms, 90 blocks** | not applicable |
+
+For a plain range the btree ties it and is simpler, so that is the default answer.
+The multicolumn GIN earns its keep only when one index has to serve containment and
+a range together. What stays true either way is that `jsonb_ops` and `jsonb_path_ops`
+answer "which documents contain this", and nothing about order.
 
 These are also the easy ones to get wrong, because the slow form is the one that
 reads like ordinary SQL. `data->>'sku' = 'SKU-4242'` looks familiar and walks all
