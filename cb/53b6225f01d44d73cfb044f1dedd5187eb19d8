@@ -1,0 +1,74 @@
+postgres-gin-index-poc/start.sh
+  s_6f4e26a77efcde::t_de73fcdd68e4b5 1-30
+postgres-gin-index-poc/logo.svg
+  s_6f4e26a77efcde::t_1c870569443d80 1,10
+  s_6f4e26a77efcde::t_94c1347a9fbffb 2-9,11-19
+postgres-gin-index-poc/db/changelog/changes/004-analyze-documents.sql
+  s_6f4e26a77efcde::t_c899ab99210c66 1-5
+postgres-gin-index-poc/test.sh
+  s_6f4e26a77efcde::t_19d56d6af01be3 1-17,28-40,42-61,64-65,71-100
+  s_6f4e26a77efcde::t_4c34b9afaa6fd2 18-27,41
+  s_6f4e26a77efcde::t_e6bda0c9737b4d 62-63,66-70
+postgres-gin-index-poc/db/changelog/changes/002-create-gin-indexes.sql
+  s_6f4e26a77efcde::t_98e13ff9b3e588 1-9
+postgres-gin-index-poc/stop.sh
+  s_6f4e26a77efcde::t_de73fcdd68e4b5 1-5
+postgres-gin-index-poc/src/db.py
+  s_6f4e26a77efcde::t_4473a1d0b1ddf3 1-97
+postgres-gin-index-poc/README.md
+  s_6f4e26a77efcde::t_1173d7cc72b82c 135-137
+  s_6f4e26a77efcde::t_0fafbfc764d861 156-157,188-190
+  s_6f4e26a77efcde::t_e7ae68e99e3c5d 1-134,138-155,158-187,191-235
+postgres-gin-index-poc/Containerfile
+  s_6f4e26a77efcde::t_23bc67bc445201 1-7
+postgres-gin-index-poc/db/changelog/db.changelog-master.xml
+  s_6f4e26a77efcde::t_98e13ff9b3e588 1-13
+postgres-gin-index-poc/src/main.py
+  s_6f4e26a77efcde::t_71b125a1d530a6 1-23
+postgres-gin-index-poc/architecture.svg
+  s_6f4e26a77efcde::t_8b7d13e44c48c6 2-11,13-14,21-23,45-47,52-53,59-60
+  s_6f4e26a77efcde::t_102cabad30b682 55
+  s_6f4e26a77efcde::t_38a1cac208acaf 1,12,15-20,24-44,48-51,54,56-58
+postgres-gin-index-poc/run.sh
+  s_6f4e26a77efcde::t_77136b5f6dca16 5-6
+  s_6f4e26a77efcde::t_0c64bc5da017c4 7,12
+  s_6f4e26a77efcde::t_de73fcdd68e4b5 2-4,8-10
+  s_6f4e26a77efcde::t_4d644e5b31f082 1,11
+postgres-gin-index-poc/build.sh
+  s_6f4e26a77efcde::t_de73fcdd68e4b5 1-2,4,9-11,13
+  s_6f4e26a77efcde::t_0c64bc5da017c4 3,5-6,8,12
+  s_6f4e26a77efcde::t_77136b5f6dca16 7
+postgres-gin-index-poc/install-deps.sh
+  s_6f4e26a77efcde::t_de73fcdd68e4b5 1-2
+  s_6f4e26a77efcde::t_0c64bc5da017c4 3-7
+  s_6f4e26a77efcde::t_77136b5f6dca16 8-11
+postgres-gin-index-poc/db/changelog/changes/001-create-documents-table.sql
+  s_6f4e26a77efcde::t_98e13ff9b3e588 1-10
+postgres-gin-index-poc/podman-compose.yml
+  s_6f4e26a77efcde::t_15f2212c0b0a49 12
+  s_6f4e26a77efcde::t_23bc67bc445201 1-11,13-53
+postgres-gin-index-poc/requirements.txt
+  s_6f4e26a77efcde::t_23bc67bc445201 1
+postgres-gin-index-poc/db/changelog/changes/003-seed-documents.sql
+  s_6f4e26a77efcde::t_c899ab99210c66 1-23
+postgres-gin-index-poc/.gitignore
+  s_6f4e26a77efcde::t_77136b5f6dca16 1-3
+postgres-gin-index-poc/src/api.py
+  s_6f4e26a77efcde::t_71b125a1d530a6 1-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "cb53b6225f01d44d73cfb044f1dedd5187eb19d8",
+  "prompts": {},
+  "sessions": {
+    "s_6f4e26a77efcde": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d1ffc15-07b9-47b5-85d9-9ce19f7cabe4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
