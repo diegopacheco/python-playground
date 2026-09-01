@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 400" width="1120" height="400">
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&amp;display=swap');</style>
+    <filter id="w">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <marker id="a" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M1 1 L11 6 L1 11 z" fill="#4a4a4a"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1120" height="400" fill="#fffdf7"/>
+
+  <g filter="url(#w)" fill="none" stroke="#4a4a4a">
+    <rect x="212" y="30" width="880" height="344" rx="22" stroke-width="2.5" stroke-dasharray="12 9"/>
+    <rect x="24" y="206" width="160" height="96" rx="16" stroke-width="3" fill="#e8e2f5"/>
+    <rect x="252" y="186" width="196" height="120" rx="16" stroke-width="3" fill="#c9dcf5"/>
+    <rect x="252" y="60" width="196" height="86" rx="16" stroke-width="3" fill="#f6d6b8"/>
+    <rect x="580" y="170" width="200" height="152" rx="16" stroke-width="3" fill="#bfe3c6"/>
+    <rect x="850" y="170" width="180" height="152" rx="16" stroke-width="3" fill="#fdf0c4"/>
+  </g>
+
+  <g font-family="Caveat, 'Comic Sans MS', cursive" fill="#2f2f2f" text-anchor="middle" filter="url(#w)">
+    <text x="652" y="58" font-size="26" font-weight="700" fill="#6b6b6b">podman-compose</text>
+
+    <text x="104" y="244" font-size="26" font-weight="700">curl</text>
+    <text x="104" y="274" font-size="22">test.sh</text>
+
+    <text x="350" y="224" font-size="26" font-weight="700">rest api :8080</text>
+    <text x="350" y="254" font-size="21">python 3.14.6</text>
+    <text x="350" y="282" font-size="21">http.server</text>
+
+    <text x="350" y="98" font-size="26" font-weight="700">liquibase 4.33</text>
+    <text x="350" y="126" font-size="21">sql changelogs</text>
+
+    <text x="680" y="206" font-size="26" font-weight="700">postgres 18</text>
+    <text x="680" y="238" font-size="21">:55432</text>
+    <text x="680" y="274" font-size="21">table documents</text>
+    <text x="680" y="302" font-size="21">data JSONB</text>
+
+    <text x="940" y="206" font-size="25" font-weight="700">gin indexes</text>
+    <text x="940" y="242" font-size="20">jsonb_ops</text>
+    <text x="940" y="270" font-size="20">jsonb_path_ops</text>
+    <text x="940" y="302" font-size="20">@&gt; ? ?|</text>
+  </g>
+
+  <g filter="url(#w)" stroke="#4a4a4a" stroke-width="3" fill="none" marker-end="url(#a)">
+    <path d="M186 250 L246 250"/>
+    <path d="M450 246 L576 246"/>
+    <path d="M350 148 L350 182"/>
+    <path d="M782 246 L846 246"/>
+  </g>
+
+  <g font-family="Caveat, 'Comic Sans MS', cursive" fill="#5a5a5a" text-anchor="middle" font-size="19" filter="url(#w)">
+    <text x="204" y="194" text-anchor="end">http json</text>
+    <text x="513" y="232">psycopg 3</text>
+    <text x="814" y="232">plan</text>
+    <text x="412" y="170">update</text>
+  </g>
+</svg>

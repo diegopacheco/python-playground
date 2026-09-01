@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.33.xsd">
+
+    <include file="changes/001-create-documents-table.sql" relativeToChangelogFile="true"/>
+    <include file="changes/002-create-gin-indexes.sql" relativeToChangelogFile="true"/>
+    <include file="changes/003-seed-documents.sql" relativeToChangelogFile="true"/>
+    <include file="changes/004-analyze-documents.sql" relativeToChangelogFile="true"/>
+
+</databaseChangeLog>

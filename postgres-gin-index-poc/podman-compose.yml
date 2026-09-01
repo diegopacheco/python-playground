@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:18
+    container_name: gin-postgres
+    environment:
+      POSTGRES_DB: ginpoc
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: poc
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d ginpoc"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  liquibase:
+    image: docker.io/liquibase/liquibase:4.33
+    container_name: gin-liquibase
+    depends_on:
+      - postgres
+    volumes:
+      - ./db/changelog:/liquibase/changelog:z
+    command:
+      - --search-path=/liquibase/changelog
+      - --changelog-file=db.changelog-master.xml
+      - --url=jdbc:postgresql://postgres:5432/ginpoc
+      - --username=poc
+      - --password=poc
+      - update
+
+  api:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: localhost/postgres-gin-index-poc-api:latest
+    container_name: gin-api
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ginpoc
+      DB_USER: poc
+      DB_PASSWORD: poc
+      API_PORT: 8080
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

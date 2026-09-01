@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 150" width="640" height="150">
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&amp;display=swap');</style>
+    <filter id="wobble">
+      <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="3" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+  <g filter="url(#wobble)">
+    <rect x="18" y="18" width="604" height="114" rx="20" fill="#fdf6e3" stroke="#4a4a4a" stroke-width="3"/>
+    <rect x="40" y="46" width="26" height="58" rx="6" fill="#bfe3c6" stroke="#4a4a4a" stroke-width="2.5"/>
+    <rect x="74" y="62" width="26" height="42" rx="6" fill="#c9dcf5" stroke="#4a4a4a" stroke-width="2.5"/>
+    <rect x="108" y="34" width="26" height="70" rx="6" fill="#f6d6b8" stroke="#4a4a4a" stroke-width="2.5"/>
+  </g>
+  <g font-family="Caveat, 'Comic Sans MS', cursive" fill="#2f2f2f" filter="url(#wobble)">
+    <text x="154" y="72" font-size="42" font-weight="700">JSONB + GIN</text>
+    <text x="154" y="108" font-size="27" font-weight="600" fill="#5a5a5a">postgres 18 . python 3.14</text>
+  </g>
+</svg>
