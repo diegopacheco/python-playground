@@ -175,6 +175,49 @@ curl -s -X POST http://localhost:8080/documents \
 
 ## Cost of Each Lookup
 
+### Will This Query Be Fast?
+
+Two questions, in order. The first is a gate and it is binary: fail it and the index
+is never used, so nothing else matters. The second is a dial.
+
+**Gate, can the index be used at all?** All three must hold.
+
+| Check | Fast | Slow |
+| --- | --- | --- |
+| The left side is the bare column | `data @> '{"sku":"SKU-4242"}'` | `data->>'sku' = 'SKU-4242'`, or any `->`, `#>` or cast on `data` |
+| The operator belongs to the op class | `@>` `?` `?\|` `?&` `@?` `@@` | `=` `<` `>` `BETWEEN` `LIKE` `IN` `ORDER BY` on an extracted value |
+| The op class holds that kind of entry | `?` against `jsonb_ops` | `?` when only `jsonb_path_ops` exists, or `?` on a nested key |
+
+Fail any row and the result is a sequential scan across all 1.562 blocks, however
+few rows come back. This is the one that surprises people, because the index exists
+and the query still reads the whole table.
+
+**Dial, is it worth using?** Only asked once the gate is passed.
+
+| Rows matched | Blocks read | Verdict |
+| --- | --- | --- |
+| under 1%, a needle | 5 to 9 against 1.562 | use freely |
+| 1% to 10% | approaching 1.562 | use with care, the margin shrinks per row |
+| 10% to 25% | more than the plain scan | avoid, the index is extra work first |
+| near 100% | same as the scan | never, the planner drops the index by itself |
+
+Cardinality is what sets the dial. Cardinality is the count of distinct values in a
+field, and high cardinality is the good case: many distinct values means each lookup
+returns few rows. Measured on this table:
+
+| Field | Distinct values | Cardinality | Rows per lookup | Index worth it? |
+| --- | --- | --- | --- | --- |
+| `sku` | 50.005 | high | 1 (0,00%) | great |
+| `brand` | 22 | medium | 2.273 (4,5%) | marginal |
+| `category` | 7 | low | 7.144 (14%) | useless |
+
+So the short rule: **a high cardinality field with a containment operator is fast; a
+low cardinality field, or any accessor on the left side, is slow.** The first half of
+that sentence is the dial, the second half is the gate, and the gate is the one that
+gets written by accident.
+
+### Measured Cost
+
 Every number here comes from the running stack against 50.005 rows, as
 `EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM documents WHERE <predicate>`, best
 of five with a warm cache. The forced column is the same query with
