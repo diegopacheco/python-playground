@@ -22,6 +22,31 @@ That last part is the point of the POC: you can see the GIN index being chosen
 for a selective lookup, and see the planner correctly ignore it when a predicate
 matches 5% of the table and a plain ordered scan is cheaper.
 
+## What is a GIN Index?
+
+GIN stands for Generalized Inverted Index. It is part of PostgreSQL core, not a
+plugin and not an extension: there is nothing to `CREATE EXTENSION`, it has shipped
+with the server since 8.2, and this POC runs it on PostgreSQL 18.6.
+
+A B-tree indexes one value per row and answers `=` and `<`. An inverted index works
+the other way around: it splits each row's value into many small items and keeps,
+for each item, the sorted list of rows containing it. Same shape as the index at the
+back of a book, term first and page numbers after. One JSONB document therefore
+produces dozens of index entries, and a lookup reads the posting list for the term
+being searched instead of reading the table.
+
+What counts as an item is decided by the operator class:
+
+- `jsonb_ops`, the default, extracts every key and every value as separate entries, which is why it can answer key existence (`?`, `?|`) on top of containment.
+- `jsonb_path_ops` extracts one hash per value path, so it stores fewer and more selective entries. Smaller and faster, but it has no entry for a bare key and cannot answer `?` at all.
+
+Two consequences run through the rest of this README. A GIN lookup yields row
+locations rather than rows, so the plan is always a `Bitmap Index Scan` feeding a
+`Bitmap Heap Scan` that visits the heap and rechecks the predicate. And its cost
+scales with the size of the match set: a posting list of one row is nearly free,
+while a posting list of 12.500 rows sends the heap scan across every page of the
+table anyway, which is the same work the sequential scan was going to do.
+
 ## Architecture
 
 <img src="architecture.svg" alt="Architecture" width="1120"/>
@@ -118,6 +143,57 @@ curl -s -X POST http://localhost:8080/documents \
   -H 'Content-Type: application/json' \
   -d '{"name":"mouse-m1","data":{"sku":"SKU-MOUSE","category":"electronics","tags":["wireless"]}}'
 ```
+
+## Cost of Each Lookup
+
+Every number here comes from the running stack against 50.005 rows, as
+`EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM documents WHERE <predicate>`, best
+of five with a warm cache. The forced column is the same query with
+`enable_bitmapscan` and `enable_indexscan` off, so it shows what the index actually
+bought. `count(*)` is used on purpose: the API adds `ORDER BY id LIMIT`, which gives
+the planner a second escape route and hides the raw cost of the predicate.
+
+| Lookup | Rows matched | Index chosen | With index | Forced seq scan | Use it |
+| --- | --- | --- | --- | --- | --- |
+| `contains={"sku":"SKU-4242"}` | 1 | `idx_documents_data_path_gin` | **0.06 ms**, 5 blocks | 8.00 ms, 1.562 blocks | freely |
+| `key=discontinued` | 1 | `idx_documents_data_gin` | **0.06 ms**, 6 blocks | 4.19 ms, 1.562 blocks | freely |
+| `anyKey=discontinued,nope` | 1 | `idx_documents_data_gin` | **0.05 ms**, 9 blocks | 7.18 ms, 1.562 blocks | freely |
+| `contains={"tags":["gen-3"]}` | 5.000 | `idx_documents_data_path_gin` | 2.79 ms, 1.567 blocks | 7.73 ms, 1.562 blocks | with care |
+| `contains={"stock":{"warehouse":"wh-1"}}` | 10.002 | `idx_documents_data_path_gin` | 4.39 ms, 1.569 blocks | 8.31 ms, 1.562 blocks | with care |
+| `contains={"category":"tools"}` | 12.500 | `idx_documents_data_path_gin` | 4.77 ms, 1.569 blocks | 6.37 ms, 1.562 blocks | avoid |
+| `key=sku` | 50.005 | none, planner refuses it | 10.11 ms, 1.562 blocks | 10.04 ms, 1.562 blocks | never |
+| `anyKey=sku,brand` | 50.005 | none, planner refuses it | 10.18 ms, 1.562 blocks | 10.47 ms, 1.562 blocks | never |
+
+The block counts tell the story better than the milliseconds. A single matching row
+costs 5 to 9 blocks against 1.562 for the whole table, a factor of roughly 200. At
+10% of the table the bitmap already touches 1.569 blocks, more than the sequential
+scan, and the only remaining saving is the predicate evaluation. At 100% the planner
+throws the index away without being asked, and it is right to.
+
+So the shape of a safe query is a needle, not a slice. Under ~1% matched, use these
+operators as much as you like. Between 1% and 10% they still win but the margin
+shrinks with every row. Above ~10% the index is dead weight on reads while still
+being paid for on every write.
+
+### Where the Limits Are
+
+| Careful with | Why | Measured cost |
+| --- | --- | --- |
+| `data->>'sku' = 'SKU-4242'` | `->>` is not a GIN operator, no op class extracts it | 5.65 ms seq scan, needs `CREATE INDEX ON documents ((data->>'sku'))` instead |
+| Ranges, `<`, `>`, `BETWEEN` on a JSON field | GIN entries only answer equality and containment | full scan plus a cast per row |
+| `ORDER BY data->>'price'` | GIN has no ordering, posting lists are row locations | full scan plus a sort |
+| `LIKE` or prefix search on a value | needs the `pg_trgm` GIN op class over extracted text | not indexable by `jsonb_ops` or `jsonb_path_ops` |
+| `?` and `?\|` against a nested key | only top-level keys become key entries | `data ? 'warehouse'` returns 0 rows although all 50.003 seeded rows have `stock.warehouse` |
+| `?` and `?\|` when only `jsonb_path_ops` exists | that op class stores no bare-key entries | the index is not even a candidate, straight to seq scan |
+| Write throughput | one index entry per extracted item, on both indexes | 50.000 inserts: 250 ms with no GIN, 713 ms with these two, ~2,9x |
+| Disk | keys and values are stored again, per op class | 12 MB heap against 8.880 kB `jsonb_ops` plus 6.576 kB `jsonb_path_ops` |
+| Large match sets under small `work_mem` | the bitmap goes lossy when it does not fit, here `work_mem` is 4 MB | the heap scan rechecks whole pages instead of single rows |
+
+Two knobs are worth knowing before blaming the index. `gin_pending_list_limit`
+(4 MB here) sizes the pending list that `fastupdate` writes new entries into, which
+is what makes inserts survivable and what makes the first query after a write burst
+pay to merge it. `gin_fuzzy_search_limit` (0, off) caps how many rows a GIN scan
+returns, trading exactness for a bounded worst case on very broad predicates.
 
 ## Key Data Structures and Design Decisions
 
