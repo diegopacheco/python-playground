@@ -47,6 +47,35 @@ scales with the size of the match set: a posting list of one row is nearly free,
 while a posting list of 12.500 rows sends the heap scan across every page of the
 table anyway, which is the same work the sequential scan was going to do.
 
+### What GIN Cannot Answer
+
+GIN entries are terms, not sorted values. A posting list can say which rows contain
+`"price": 991.99` and nothing at all about which rows are above 990. So anything
+that needs ordering, or that hides the column behind an accessor, is outside what
+these two op classes can serve, however selective it is:
+
+| Query | Why GIN cannot serve it | Use instead |
+| --- | --- | --- |
+| `data->>'sku' = 'SKU-4242'` | `->>` is a function on the column, the index is on `data` itself | `CREATE INDEX ON documents ((data->>'sku'))` |
+| `(data->>'price')::numeric > 990` | entries are terms, there is no ordered range to walk | `CREATE INDEX ON documents (((data->>'price')::numeric))` |
+| `ORDER BY data->>'price'` | posting lists hold row locations, they carry no order | a btree index on that same expression |
+| `data->>'sku' LIKE '%42%'` | no op class extracts substrings of a value | a `pg_trgm` GIN index over `(data->>'sku')` |
+
+Those remedies are measured, not assumed. Adding the two btree expression indexes
+above to this stack and rerunning the same three queries: `->>` equality 3.48 ms seq
+scan becomes 0.02 ms, the numeric range 6.63 ms becomes 0.10 ms, and the sort
+12.70 ms becomes 0.02 ms. The GIN indexes are untouched and unused by all three.
+
+Ranges are the sharpest edge here: GIN is an equality and containment structure, and
+a `BETWEEN` on a JSON field gets a sequential scan plus a cast on every row no matter
+how few rows come back. Reach for a btree expression index instead, and keep GIN for
+"which documents contain this".
+
+These are also the easy ones to get wrong, because the slow form is the one that
+reads like ordinary SQL. `data->>'sku' = 'SKU-4242'` looks familiar and walks all
+1.562 blocks of the table; `data @> '{"sku":"SKU-4242"}'` looks strange and reads
+five. Both return the same row and neither warns, so only `EXPLAIN` separates them.
+
 ## Architecture
 
 <img src="architecture.svg" alt="Architecture" width="1120"/>
@@ -153,16 +182,16 @@ of five with a warm cache. The forced column is the same query with
 bought. `count(*)` is used on purpose: the API adds `ORDER BY id LIMIT`, which gives
 the planner a second escape route and hides the raw cost of the predicate.
 
-| Lookup | Rows matched | Index chosen | With index | Forced seq scan | Use it |
-| --- | --- | --- | --- | --- | --- |
-| `contains={"sku":"SKU-4242"}` | 1 | `idx_documents_data_path_gin` | **0.06 ms**, 5 blocks | 8.00 ms, 1.562 blocks | freely |
-| `key=discontinued` | 1 | `idx_documents_data_gin` | **0.06 ms**, 6 blocks | 4.19 ms, 1.562 blocks | freely |
-| `anyKey=discontinued,nope` | 1 | `idx_documents_data_gin` | **0.05 ms**, 9 blocks | 7.18 ms, 1.562 blocks | freely |
-| `contains={"tags":["gen-3"]}` | 5.000 | `idx_documents_data_path_gin` | 2.79 ms, 1.567 blocks | 7.73 ms, 1.562 blocks | with care |
-| `contains={"stock":{"warehouse":"wh-1"}}` | 10.002 | `idx_documents_data_path_gin` | 4.39 ms, 1.569 blocks | 8.31 ms, 1.562 blocks | with care |
-| `contains={"category":"tools"}` | 12.500 | `idx_documents_data_path_gin` | 4.77 ms, 1.569 blocks | 6.37 ms, 1.562 blocks | avoid |
-| `key=sku` | 50.005 | none, planner refuses it | 10.11 ms, 1.562 blocks | 10.04 ms, 1.562 blocks | never |
-| `anyKey=sku,brand` | 50.005 | none, planner refuses it | 10.18 ms, 1.562 blocks | 10.47 ms, 1.562 blocks | never |
+| Lookup | Rows matched | Index chosen | With index | Forced seq scan | Use it | Why |
+| --- | --- | --- | --- | --- | --- | --- |
+| `contains={"sku":"SKU-4242"}` | 1 | `idx_documents_data_path_gin` | **0.06 ms**, 5 blocks | 8.00 ms, 1.562 blocks | freely | one row matches, the index jumps straight to it |
+| `key=discontinued` | 1 | `idx_documents_data_gin` | **0.06 ms**, 6 blocks | 4.19 ms, 1.562 blocks | freely | one row has that key, the index jumps straight to it |
+| `anyKey=discontinued,nope` | 1 | `idx_documents_data_gin` | **0.05 ms**, 9 blocks | 7.18 ms, 1.562 blocks | freely | one row has either key, the index jumps straight to it |
+| `contains={"tags":["gen-3"]}` | 5.000 | `idx_documents_data_path_gin` | 2.79 ms, 1.567 blocks | 7.73 ms, 1.562 blocks | with care | the index finds them fast, but 5.000 rows sit on every page, so the table gets read anyway |
+| `contains={"stock":{"warehouse":"wh-1"}}` | 10.002 | `idx_documents_data_path_gin` | 4.39 ms, 1.569 blocks | 8.31 ms, 1.562 blocks | with care | a fifth of the table matches, so the index reads more pages than the plain scan |
+| `contains={"category":"tools"}` | 12.500 | `idx_documents_data_path_gin` | 4.77 ms, 1.569 blocks | 6.37 ms, 1.562 blocks | avoid | a quarter of the table matches, the index is just extra work before the same scan |
+| `key=sku` | 50.005 | none, planner refuses it | 10.11 ms, 1.562 blocks | 10.04 ms, 1.562 blocks | never | every row has `sku`, the index narrows nothing, the planner drops it |
+| `anyKey=sku,brand` | 50.005 | none, planner refuses it | 10.18 ms, 1.562 blocks | 10.47 ms, 1.562 blocks | never | every row has one of the keys, nothing left to narrow |
 
 The block counts tell the story better than the milliseconds. A single matching row
 costs 5 to 9 blocks against 1.562 for the whole table, a factor of roughly 200. At
@@ -177,12 +206,11 @@ being paid for on every write.
 
 ### Where the Limits Are
 
+Beyond the query shapes GIN cannot answer at all, these are the limits you meet
+once the operators are the right ones:
+
 | Careful with | Why | Measured cost |
 | --- | --- | --- |
-| `data->>'sku' = 'SKU-4242'` | `->>` is not a GIN operator, no op class extracts it | 5.65 ms seq scan, needs `CREATE INDEX ON documents ((data->>'sku'))` instead |
-| Ranges, `<`, `>`, `BETWEEN` on a JSON field | GIN entries only answer equality and containment | full scan plus a cast per row |
-| `ORDER BY data->>'price'` | GIN has no ordering, posting lists are row locations | full scan plus a sort |
-| `LIKE` or prefix search on a value | needs the `pg_trgm` GIN op class over extracted text | not indexable by `jsonb_ops` or `jsonb_path_ops` |
 | `?` and `?\|` against a nested key | only top-level keys become key entries | `data ? 'warehouse'` returns 0 rows although all 50.003 seeded rows have `stock.warehouse` |
 | `?` and `?\|` when only `jsonb_path_ops` exists | that op class stores no bare-key entries | the index is not even a candidate, straight to seq scan |
 | Write throughput | one index entry per extracted item, on both indexes | 50.000 inserts: 250 ms with no GIN, 713 ms with these two, ~2,9x |
