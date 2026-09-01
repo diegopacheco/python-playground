@@ -66,8 +66,17 @@ above to this stack and rerunning the same three queries: `->>` equality 3.48 ms
 scan becomes 0.02 ms, the numeric range 6.63 ms becomes 0.10 ms, and the sort
 12.70 ms becomes 0.02 ms. The GIN indexes are untouched and unused by all three.
 
-Ranges are the sharpest edge, and the one worth stating precisely, because the limit
-belongs to these two op classes rather than to GIN itself.
+These are also the easy ones to get wrong, because the slow form is the one that
+reads like ordinary SQL. `data->>'sku' = 'SKU-4242'` looks familiar and walks all
+1.562 blocks of the table; `data @> '{"sku":"SKU-4242"}'` looks strange and reads
+five. Both return the same row and neither warns, so only `EXPLAIN` separates them.
+
+### Range Queries
+
+Short answer: not with the two op classes this POC creates, and not through jsonpath
+either. Yes with `btree_gin`, and usually a plain btree is the better answer. Worth
+stating precisely, because the limit belongs to these two op classes rather than to
+GIN itself.
 
 Writing the range as jsonpath does not rescue it. `@?` and `@@` are GIN indexable
 operators, so they look like the way in, but GIN only extracts `accessor == constant`
@@ -96,10 +105,6 @@ The multicolumn GIN earns its keep only when one index has to serve containment 
 a range together. What stays true either way is that `jsonb_ops` and `jsonb_path_ops`
 answer "which documents contain this", and nothing about order.
 
-These are also the easy ones to get wrong, because the slow form is the one that
-reads like ordinary SQL. `data->>'sku' = 'SKU-4242'` looks familiar and walks all
-1.562 blocks of the table; `data @> '{"sku":"SKU-4242"}'` looks strange and reads
-five. Both return the same row and neither warns, so only `EXPLAIN` separates them.
 
 ## Architecture
 
