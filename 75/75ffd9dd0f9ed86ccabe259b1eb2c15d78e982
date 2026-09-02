@@ -1,0 +1,94 @@
+qrcode-image-fun-poc/app/preload.js
+  s_98542569211115::t_0f8325361ec0dc 1-9,11-13
+  s_98542569211115::t_94e8941a484599 10
+qrcode-image-fun-poc/app/package.json
+  s_98542569211115::t_bcde0e150a8ee3 1-10,12-17
+  s_98542569211115::t_3c1f81d43c849d 11
+qrcode-image-fun-poc/tests/test_pipeline.py
+  s_98542569211115::t_51b66a2cf17f0e 31-35,38,42-44,109-117
+  s_98542569211115::t_115c982b87fc56 1-30,36-37,39-41,45-49,66-107,118-131
+  s_98542569211115::t_f34e1a48f48059 50-65,108
+qrcode-image-fun-poc/src/ids.py
+  s_98542569211115::t_8238f31c0085ef 1-47
+qrcode-image-fun-poc/app/uninstall.sh
+  s_98542569211115::t_feb8c1ec22396a 9-14
+  s_98542569211115::t_a44c520ebff710 24-28
+  s_98542569211115::t_8fe9b6df66c913 1-8,15-23,29
+qrcode-image-fun-poc/src/server.py
+  s_98542569211115::t_3fe7341fb3a85e 1-76
+qrcode-image-fun-poc/run-tests.sh
+  s_98542569211115::t_115c982b87fc56 1-5
+qrcode-image-fun-poc/src/pipeline.py
+  s_98542569211115::t_8c7ff65b7e92d5 1-55
+qrcode-image-fun-poc/src/main.py
+  s_98542569211115::t_3fe7341fb3a85e 1-6
+qrcode-image-fun-poc/.gitignore
+  s_98542569211115::t_bf20d3657d0f72 1-5
+  s_98542569211115::t_3c1f81d43c849d 6
+qrcode-image-fun-poc/src/page.py
+  s_98542569211115::t_c18410bcd9f9b6 1-45,47
+  s_98542569211115::t_f148afb125c88a 46
+qrcode-image-fun-poc/install-deps.sh
+  s_98542569211115::t_bb9d55cb478936 4-10
+  s_98542569211115::t_dba6b472573e0d 1-3
+qrcode-image-fun-poc/src/store.py
+  s_98542569211115::t_08829cd79c3e13 1,3-4,8-38
+  s_98542569211115::t_4705ec816f2a4a 2,5-7
+qrcode-image-fun-poc/diagrams/architecture.svg
+  s_98542569211115::t_4c328f34c58c09 1-48,50-51,53-86
+  s_98542569211115::t_d5280d8c05bbaa 49,52
+qrcode-image-fun-poc/src/qr.py
+  s_98542569211115::t_af924ba43badb9 1-61
+qrcode-image-fun-poc/app/main.js
+  s_98542569211115::t_0f8325361ec0dc 1-164,166-174,180-194
+  s_98542569211115::t_94e8941a484599 165,175-179
+qrcode-image-fun-poc/run.sh
+  s_98542569211115::t_bb9d55cb478936 4-5
+  s_98542569211115::t_b025542a726023 1-3
+qrcode-image-fun-poc/app/install.sh
+  s_98542569211115::t_3c1f81d43c849d 12
+  s_98542569211115::t_8fe9b6df66c913 1-8,10-11,13-21
+  s_98542569211115::t_a44c520ebff710 9
+qrcode-image-fun-poc/requirements.txt
+  s_98542569211115::t_8238f31c0085ef 1-5
+  s_98542569211115::t_8b234746ab6948 6
+qrcode-image-fun-poc/src/optics.py
+  s_98542569211115::t_da4c86d6c11899 8-12,29,33-36,48-51
+  s_98542569211115::t_41012ae5ee79eb 1-7,13-28,46,56-62
+  s_98542569211115::t_4384a4e03a1bcf 30-32,37-45,47,52-55
+qrcode-image-fun-poc/README.md
+  s_98542569211115::t_b484fb1ada1304 3-45,47-141
+  s_98542569211115::t_6d2bd3911488c7 46
+  s_98542569211115::t_3c1f81d43c849d 1
+  s_98542569211115::t_ce0dae71852df4 2
+qrcode-image-fun-poc/app/renderer.js
+  s_98542569211115::t_94e8941a484599 74-77
+  s_98542569211115::t_fb92a2c7165a5f 1-73,78-276
+qrcode-image-fun-poc/app/styles.css
+  s_98542569211115::t_a07347a6246fa8 1-126,129,132-236
+  s_98542569211115::t_c56ca9c656e161 127-128,130-131
+qrcode-image-fun-poc/app/index.html
+  s_98542569211115::t_0fe0653a6d8fec 1-95
+qrcode-image-fun-poc/app/package-lock.json
+  s_98542569211115::t_a0dc26cbca5cc3 1-2150
+qrcode-image-fun-poc/app/resources/Info.plist
+  s_98542569211115::t_0adfbb60e48af1 1-8
+qrcode-image-fun-poc/app/resources/make-icon.py
+  s_98542569211115::t_7f2254e970d880 1-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "7575ffd9dd0f9ed86ccabe259b1eb2c15d78e982",
+  "prompts": {},
+  "sessions": {
+    "s_98542569211115": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec2e5e17-67d4-47ea-9478-fab12e076807",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
