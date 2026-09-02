@@ -146,7 +146,7 @@ video {
 
 .pair {
   display: grid;
-  grid-template-columns: 1fr 96px 96px 96px;
+  grid-template-columns: 1fr 96px 96px;
   gap: 12px;
   align-items: center;
   background: var(--panel);
@@ -156,11 +156,6 @@ video {
 }
 
 .pair img { width: 96px; border: 1px solid var(--line); border-radius: 6px; }
-.pair .missing {
-  width: 96px; height: 68px; border: 1px dashed var(--line);
-  border-radius: 6px; display: grid; place-items: center;
-  color: var(--muted); font-size: 11px;
-}
 
 .tag {
   display: inline-block;

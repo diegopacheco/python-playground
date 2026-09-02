@@ -3,11 +3,17 @@ import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 import pipeline
 import store
 
 MAX_BYTES = 12 * 1024 * 1024
+
+
+class Scan(BaseModel):
+    id: str
+
 
 app = FastAPI(title="qrcode-image-fun-poc")
 app.add_middleware(
@@ -34,9 +40,9 @@ async def upload(image: UploadFile = File(...)) -> dict:
 
 
 @app.post("/captures")
-async def capture(frame: UploadFile = File(...)) -> dict:
+def capture(scan: Scan) -> dict:
     try:
-        return pipeline.pair(await _decode_upload(frame))
+        return pipeline.pair(scan.id)
     except ValueError as bad:
         raise HTTPException(422, str(bad))
 
@@ -69,8 +75,3 @@ def page_png(page_id: str) -> FileResponse:
 @app.get("/originals/{page_id}.png")
 def original_png(page_id: str) -> FileResponse:
     return _serve(store.ORIGINALS, page_id)
-
-
-@app.get("/captures/{page_id}.png")
-def capture_png(page_id: str) -> FileResponse:
-    return _serve(store.CAPTURES, page_id)

@@ -82,8 +82,8 @@ async function startCamera() {
   await el("video").play();
   el("scan-toggle").textContent = "Stop camera";
   el("shoot").disabled = false;
-  el("scan-state").textContent = "looking for a page";
-  scanTimer = setInterval(() => sendFrame(true), SCAN_INTERVAL_MS);
+  el("scan-state").textContent = "looking for a code";
+  scanTimer = setInterval(() => sendScan(true), SCAN_INTERVAL_MS);
 }
 
 function stopCamera() {
@@ -97,24 +97,44 @@ function stopCamera() {
   el("scan-state").textContent = "idle";
 }
 
-function frameBlob() {
+function refusal(body) {
+  const detail = body?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => `${item.loc?.join(".")}: ${item.msg}`).join("; ");
+  }
+  return "refused for an unknown reason";
+}
+
+function readCode() {
   const video = el("video");
   const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
-  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(video, 0, 0);
+  const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+  return jsQR(frame.data, frame.width, frame.height)?.data ?? null;
 }
 
-async function sendFrame(quiet) {
+async function sendScan(quiet) {
   if (inFlight || !stream || !el("video").videoWidth) return;
   inFlight = true;
   try {
-    const body = new FormData();
-    body.append("frame", await frameBlob(), "frame.png");
-    const response = await fetch(`${SERVER}/captures`, { method: "POST", body });
+    const id = readCode();
+    if (!id) {
+      if (!quiet) toast("No code in this frame");
+      return;
+    }
+    const response = await fetch(`${SERVER}/captures`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
     if (!response.ok) {
-      if (!quiet) toast((await response.json()).detail);
+      const reason = refusal(await response.json());
+      el("scan-state").textContent = `refused: ${reason}`;
+      if (!quiet) toast(reason);
       return;
     }
     const entry = await response.json();
@@ -123,6 +143,7 @@ async function sendFrame(quiet) {
     toast(`Paired ${entry.id}`);
     goto("pairs");
   } catch {
+    el("scan-state").textContent = "server unreachable";
     if (!quiet) toast("Server unreachable");
   } finally {
     inFlight = false;
@@ -147,11 +168,6 @@ async function loadPairs() {
         </div>
         <img src="${SERVER}/originals/${entry.id}.png" alt="original" />
         <img src="${SERVER}/pages/${entry.id}.png" alt="page" />
-        ${
-          entry.captured
-            ? `<img src="${SERVER}/captures/${entry.id}.png" alt="capture" />`
-            : `<div class="missing">no capture</div>`
-        }
       </div>`
     )
     .join("");
@@ -248,7 +264,7 @@ el("save").addEventListener("click", async () => {
   if (saved.ok) toast(`Saved to ${saved.path}`);
 });
 el("scan-toggle").addEventListener("click", () => (stream ? stopCamera() : startCamera()));
-el("shoot").addEventListener("click", () => sendFrame(false));
+el("shoot").addEventListener("click", () => sendScan(false));
 
 el("search-input").addEventListener("input", (event) => renderSearch(event.target.value));
 el("search").addEventListener("keydown", (event) => {

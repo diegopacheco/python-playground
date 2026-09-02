@@ -2,7 +2,7 @@
 
 # QR Page Capture
 
-Upload an image and get back a printable A4 page whose QR code is painted with that image. Print it into a notebook. Later, point a camera at the page once: the same frame carries both the code and the page, so the server reads the id, proves it signed it, rectifies the page off the code's four corners, and pairs the capture with the original upload.
+Upload an image and get back a printable A4 page whose QR code is painted with that image. Print it into a notebook. Later, point a camera at it once: the app decodes the code on the spot and sends nothing but the 36-character id, so the server proves it signed that id and pairs the page it already holds with the original upload.
 
 This is an implementation of the *Notebook PoC Plan* from [qr-image-qrt-screen-to-camera-poc-09-2026](../../html-research/qr-image-qrt-screen-to-camera-poc-09-2026.html), with the phone replaced by a macOS desktop app.
 
@@ -12,11 +12,11 @@ The optical channel carries **identity, not data**. A 36-character signed id fit
 
 1. You drop an image. The server mints a 36-character HMAC-signed id.
 2. `segno` encodes that id at Version 5, error correction H — 37 modules across.
-3. The image is composited over the code: every module is biased toward its true value, then a solid dot is stamped at each module centre. Function patterns stay untouched.
-4. The **verification gate** shrinks the rendered page to a 1080p framing, blurs it, tilts it three ways, and decodes. Anything that fails is restyled with less image and a bigger dot, up to a plain code.
-5. The survivor is drawn onto an A4 page at 300 DPI with the code at 25 mm.
-6. You photograph the page. One frame, one position.
-7. The server decodes the id, rejects it unless the signature checks out, and uses the code's four corners as fiducials for a single `getPerspectiveTransform` that rectifies the whole page.
+3. The image is painted behind the code at full strength, and a soft-edged dot is stamped at each module centre to carry that module's value. Function patterns stay solid.
+4. The **verification gate** shrinks the rendered page to a 1080p framing, blurs it, tilts it three ways, and decodes. Anything that fails is restyled with a bigger dot and a stronger push of the space between dots toward the module values, up to a plain code.
+5. The survivor, rendered at 24 px per module, is downsampled onto an A4 page at 300 DPI with the code at 25 mm.
+6. You point the camera at the page. `jsQR` decodes the id in the renderer; no frame ever leaves the machine.
+7. The app posts that id alone. The server rejects it unless its own HMAC checks out, then marks the page captured.
 
 QRT, animated QR and fountain codes are all deliberately absent: paper displays exactly one frame forever, and a machine that can upload already has a network.
 
@@ -26,11 +26,10 @@ QRT, animated QR and fountain codes are all deliberately absent: paper displays 
 
 ## Features
 
-- **One camera position.** The frame that reads the code is the frame that photographs the page, so there is no move-close-then-pull-back mode switch.
+- **The capture uploads 36 characters.** The camera frame is decoded in the renderer and thrown away; pairing costs one short JSON body, not a megabyte of PNG.
 - **Verification gate before styling.** Nothing ships that a simulated camera cannot decode, which turns a print-and-reprint loop into an in-memory one.
 - **Adaptive styling.** Four strength levels, escalating only when the gate refuses, so each page keeps as much picture as it can afford.
-- **Signed ids.** The server verifies its own HMAC rather than trusting a client's claim about what it scanned.
-- **Deskew off the QR.** The code is a square of known geometry, so page rectification falls out of the thing already being decoded — no document-scanner SDK.
+- **Signed ids.** The client is the decoder now, so the server trusts nothing it sends: an id pairs only if the server's own HMAC verifies and the id is one it minted.
 - **Desktop app with real macOS manners.** Single instance, remembered window position, ⌘K search, ⌘/ shortcuts, ⌘1–4 tabs, zoom, screen capture, full screen.
 
 ## Stack
@@ -39,30 +38,31 @@ QRT, animated QR and fountain codes are all deliberately absent: paper displays 
 |---|---|---|
 | API | FastAPI + uvicorn | Two endpoints; multipart parsing and validation for free |
 | QR generation | segno | Pure Python, zero dependencies, exposes the raw module matrix |
-| Styling, gate, deskew | OpenCV + numpy | One library covers compositing, decoding and the homography |
+| Scan decoding | jsQR | One MIT file, no dependencies; Electron ships no `BarcodeDetector` |
+| Styling and gate | OpenCV + numpy | One library covers compositing and the gate's decoding |
 | Desktop app | Electron | The camera, the print dialog and the file save are all one runtime |
 | Packaging | electron-packager | Produces a `.app` the install script drops into `/Applications` |
 
-Six Python dependencies and two app dev-dependencies. No Pillow (OpenCV does the pixels), no PDF library (a 300 DPI PNG prints), no QR library in the app (the server decodes the frame it already receives).
+Six Python dependencies, one app dependency and two dev-dependencies. No Pillow (OpenCV does the pixels), no PDF library (a 300 DPI PNG prints). `jsQR` is in the app because Electron's Chromium ships without the Shape Detection API — `BarcodeDetector` is absent even behind its flags, which a probe confirmed before the dependency was added.
 
-### Two deviations from the plan
+### One deviation from the plan
 
-- **`cv2.QRCodeDetector` instead of `pyzbar`.** It removes the `brew install zbar` native dependency, and it returns the four corners the deskew needs anyway. `pyzbar` is the more tolerant decoder, so this trades a little decode robustness for one fewer moving part.
-- **The client does not decode.** The plan has the phone read the id and post both. Here the app posts one frame and the server decodes it, which deletes the client-side decoder entirely and makes "one camera position" structural rather than a UX rule.
+- **`cv2.QRCodeDetector` instead of `pyzbar`.** It removes the `brew install zbar` native dependency. `pyzbar` is the more tolerant decoder, so the gate trades a little decode robustness for one fewer moving part — and being the stricter decoder is what makes it a useful gate.
+
+The client decodes and posts only the id, as the plan has it. The cost is the deskewed capture: rectifying the page needs the frame, and the frame is exactly what is no longer uploaded.
 
 ## API
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | `POST` | `/uploads` | multipart `image` | `{id, style_attempt, image_strength, code_mm, captured}` |
-| `POST` | `/captures` | multipart `frame` | the same entry, now `captured: true` |
+| `POST` | `/captures` | json `{id}` | the same entry, now `captured: true` |
 | `GET` | `/pairs` | — | every entry, sorted by id |
 | `GET` | `/pairs/{id}` | — | one entry |
 | `GET` | `/pages/{id}.png` | — | the 2480 × 3508 printable page |
 | `GET` | `/originals/{id}.png` | — | the uploaded image |
-| `GET` | `/captures/{id}.png` | — | the rectified capture |
 
-`POST /uploads` answers `422` when no styling survives the gate. `POST /captures` answers `422` for a frame with no code, an id whose signature fails, or an id this server never minted. Uploads over 12 MB get `413`; anything OpenCV cannot decode gets `415`.
+`POST /uploads` answers `422` when no styling survives the gate. `POST /captures` answers `422` for an id whose signature fails or an id this server never minted. Uploads over 12 MB get `413`; anything OpenCV cannot decode gets `415`.
 
 Interactive docs are at `http://127.0.0.1:8000/docs` while the server runs.
 
@@ -72,18 +72,18 @@ Interactive docs are at `http://127.0.0.1:8000/docs` while the server runs.
 
 **The module matrix.** `segno` exposes the raw 37 × 37 matrix. A separate boolean mask marks the function patterns — finder squares with separators and format information, both timing lines, and the alignment pattern — and those modules are always rendered solid. Only the data and error-correction modules form the styling budget.
 
-**Styling as two layers.** Rather than pasting a logo over part of the code, every module is blended toward its true black or white by a bias factor, and a filled dot of 32% module radius is stamped at each centre. The picture survives in the gaps. Escalation raises both the bias and the dot radius together; the last step is an unstyled code that always decodes.
+**Styling as two layers.** Rather than pasting a logo over part of the code, the picture is the background and the code rides on top as a halftone screen: an antialiased dot of 42% module radius at each module centre. Between the dots the picture is untouched, which is what keeps it recognisable — pushing whole modules toward their true black or white flattens the picture into coloured noise. A `field` factor can push those gaps toward the module value when a picture needs it, and escalation raises the field and the dot radius together; the last step is an unstyled code, the most decodable this geometry gets. Rendering at 24 px per module and downsampling into the 25 mm box antialiases the dots, which the gate measurably prefers over hard-edged ones.
 
 **The gate defines the envelope.** It checks a straight 1080p framing plus three tilt directions with extra blur. That is what the system guarantees. Photographs from angles steeper than that envelope are not promised to pair — and a test pins down that when they fail, they fail cleanly rather than pairing the wrong page.
 
-**Deskew is extrapolation.** The homography is fitted on a 25 mm square and applied to a 297 mm page, so error at the far edge is amplified. It is free and dependency-less, and it is measurably worse than a purpose-built document scanner.
+**Two decoders, deliberately.** The gate decodes with OpenCV in Python; the app decodes with `jsQR` in the renderer. OpenCV is the stricter of the two at this size, so a page that clears the gate is comfortably inside what the app can read.
 
 ## How To Run
 
 ```bash
 ./install-deps.sh     # .venv + python deps, then npm install for the app
 ./run.sh              # FastAPI on http://127.0.0.1:8000
-./run-tests.sh        # 9 tests
+./run-tests.sh        # 10 tests
 ./app/install.sh      # build and install "QR Page Capture.app" into /Applications
 ./app/uninstall.sh    # remove it, and its saved window state
 ```
@@ -91,12 +91,12 @@ Interactive docs are at `http://127.0.0.1:8000/docs` while the server runs.
 `install.sh` always uninstalls first, so exactly one version is ever installed. Start the server before the app — the header shows `server up` or `server down`.
 
 ```
-Ran 9 tests in 1.5s
+Ran 10 tests in 1.5s
 
 OK
 ```
 
-The tests encode the two things that must not break: the gate must reject styling a simulated camera cannot read (and must be *able* to fail, which is asserted directly), and a forged or tampered id must never reach the store. The round trip renders a page, photographs it through a tilt inside the gate's envelope, and asserts the rectified page agrees with the printed one on more than 90% of modules.
+The tests encode the two things that must not break: the gate must reject styling a simulated camera cannot read (and must be *able* to fail, which is asserted directly), and no id reaches the store unless this server minted and signed it. The round trip renders a page, photographs it through a tilt inside the gate's envelope, and asserts the id read back off that photograph is the one that pairs.
 
 ## The UI
 
@@ -122,13 +122,13 @@ The printable page: A4 at 300 DPI, a ruled notebook body, the id printed in smal
 
 ![scan](printscreens/04-scan.png)
 
-Start the camera and hold the whole page in frame. The app posts a frame every 700 ms with an in-flight guard so a visible code cannot produce a pile of duplicate uploads, and stops the moment the server pairs one. **Capture now** forces a single attempt and surfaces the server's reason when it refuses.
+Start the camera and hold the code in frame. Every 700 ms the app grabs a frame, decodes it locally, and posts the id if it found one — an in-flight guard keeps a visible code from firing a pile of duplicates, and it stops the moment the server pairs. **Capture now** forces a single attempt and surfaces the server's reason when it refuses.
 
 ### 4 · Pairs
 
 ![pairs](printscreens/05-pairs.png)
 
-Every page, with its three artefacts side by side: the original upload, the printable page, and the rectified capture. The first row here is paired — note the deskewed capture on the right, straightened from a tilted photograph. The second row shows `not captured yet` and a placeholder in the third slot.
+Every page with its two artefacts side by side, the original upload and the printable page, tagged `captured` or `not captured yet`. Since the scan sends only an id, there is no third artefact to show: a capture leaves a state change, not a picture.
 
 ### ⌘/ · Shortcuts
 
@@ -138,4 +138,4 @@ Every binding the app answers to: ⌘K search, ⌘/ this list, ⌘+ and ⌘- zoo
 
 ## What This Is Not
 
-No image bytes cross the optical channel — a single QR caps at 2,953 bytes. There is no offline mode, because a machine that can upload has a network. There is no handwriting OCR, and no page identity across a reusable notebook, which is where Rocketbook's real complexity lives and why their timeline is quarters and this one is days.
+No image bytes cross the optical channel — a single QR caps at 2,953 bytes — and none cross the capture POST either. There is no deskewed scan of the page, because straightening it would mean uploading the frame that was deliberately left behind. There is no offline mode, because a machine that can upload has a network. There is no handwriting OCR, and no page identity across a reusable notebook, which is where Rocketbook's real complexity lives and why their timeline is quarters and this one is days.

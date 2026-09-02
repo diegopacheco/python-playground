@@ -57,29 +57,29 @@
 
     <rect x="270" y="312" width="200" height="88" rx="12" fill="#e8f0fb" stroke="#5b7fb9"/>
     <text class="lbl" x="370" y="342" text-anchor="middle" stroke="none">Electron · Scan</text>
-    <text class="sub" x="370" y="364" text-anchor="middle" stroke="none">one frame holds the</text>
-    <text class="sub" x="370" y="383" text-anchor="middle" stroke="none">code and the page</text>
+    <text class="sub" x="370" y="364" text-anchor="middle" stroke="none">the app decodes the</text>
+    <text class="sub" x="370" y="383" text-anchor="middle" stroke="none">code with jsQR</text>
 
     <rect x="510" y="312" width="200" height="88" rx="12" fill="#eaf6ec" stroke="#5f9b6d"/>
     <text class="lbl" x="610" y="348" text-anchor="middle" stroke="none">POST /captures</text>
-    <text class="sub" x="610" y="372" text-anchor="middle" stroke="none">the whole frame</text>
+    <text class="sub" x="610" y="372" text-anchor="middle" stroke="none">the 36-char id only</text>
 
     <rect x="750" y="312" width="200" height="88" rx="12" fill="#fdf0e6" stroke="#c0552f"/>
-    <text class="lbl" x="850" y="342" text-anchor="middle" stroke="none">decode + verify</text>
-    <text class="sub" x="850" y="364" text-anchor="middle" stroke="none">cv2 reads the id and</text>
-    <text class="sub" x="850" y="383" text-anchor="middle" stroke="none">its four corners</text>
+    <text class="lbl" x="850" y="342" text-anchor="middle" stroke="none">verify the id</text>
+    <text class="sub" x="850" y="364" text-anchor="middle" stroke="none">HMAC proves this server</text>
+    <text class="sub" x="850" y="383" text-anchor="middle" stroke="none">minted it</text>
 
     <rect x="990" y="312" width="200" height="88" rx="12" fill="#f6ecfa" stroke="#8a5fa8"/>
-    <text class="lbl" x="1090" y="342" text-anchor="middle" stroke="none">deskew + pair</text>
-    <text class="sub" x="1090" y="364" text-anchor="middle" stroke="none">corners are fiducials</text>
-    <text class="sub" x="1090" y="383" text-anchor="middle" stroke="none">of known geometry</text>
+    <text class="lbl" x="1090" y="342" text-anchor="middle" stroke="none">pair</text>
+    <text class="sub" x="1090" y="364" text-anchor="middle" stroke="none">mark the page this server</text>
+    <text class="sub" x="1090" y="383" text-anchor="middle" stroke="none">already holds as captured</text>
 
     <path d="M232 356 L266 356" marker-end="url(#tip)"/>
     <path d="M472 356 L506 356" marker-end="url(#tip)"/>
     <path d="M712 356 L746 356" marker-end="url(#tip)"/>
     <path d="M952 356 L986 356" marker-end="url(#tip)"/>
 
-    <text class="note" x="30" y="452" stroke="none">the optical hop carries 36 characters of identity — HTTPS carries the megabytes</text>
+    <text class="note" x="30" y="452" stroke="none">the optical hop carries 36 characters of identity — and so does the capture POST</text>
     <text class="note" x="30" y="480" stroke="none">no animated QR, no fountain codes: paper shows exactly one frame, forever</text>
     <text class="note" x="30" y="508" stroke="none">the gate turns a print-and-reprint loop into an in-memory one</text>
   </g>

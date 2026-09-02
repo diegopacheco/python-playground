@@ -57,7 +57,7 @@
   <section id="scan">
     <div class="card">
       <h2>One camera position</h2>
-      <p class="hint">Hold the whole page in frame. The same frame carries the code and the page, so the server decodes the id, verifies its signature, and rectifies the page off the code's four corners.</p>
+      <p class="hint">Hold the code in frame. The app decodes it here and sends the 36-character id on its own — no frame leaves the machine. The server verifies the signature and pairs the page it already holds.</p>
       <div class="row">
         <button class="action" id="scan-toggle">Start camera</button>
         <button class="action ghost" id="shoot" disabled>Capture now</button>
@@ -70,7 +70,7 @@
   <section id="pairs">
     <div class="card">
       <h2>Pairs</h2>
-      <p class="hint">Original upload, printable page, rectified capture.</p>
+      <p class="hint">Original upload and printable page, with the pairing state the scan set.</p>
       <button class="action ghost" id="refresh">Refresh</button>
     </div>
     <div class="pairs" id="pair-list"></div>
@@ -90,6 +90,7 @@
 <div id="toast"></div>
 <div id="print-area"><img id="print-img" alt="page to print" /></div>
 
+<script src="node_modules/jsqr/dist/jsQR.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

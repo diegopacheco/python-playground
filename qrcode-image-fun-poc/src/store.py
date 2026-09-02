@@ -7,10 +7,9 @@ DATA = Path(
 )
 ORIGINALS = DATA / "originals"
 PAGES = DATA / "pages"
-CAPTURES = DATA / "captures"
 INDEX = DATA / "index.json"
 
-for folder in (ORIGINALS, PAGES, CAPTURES):
+for folder in (ORIGINALS, PAGES):
     folder.mkdir(parents=True, exist_ok=True)
 
 

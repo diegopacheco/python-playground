@@ -1,10 +1,7 @@
 import cv2
 import numpy as np
 
-import page
-
 CAMERA_PAGE_WIDTH = 1920
-RECTIFIED_SCALE = 0.5
 GATE_TILTS = (
     ((0.03, 0.01), (-0.01, 0.03), (-0.03, -0.01), (0.01, -0.03)),
     ((0.05, 0.02), (-0.02, 0.05), (-0.05, -0.02), (0.02, -0.05)),
@@ -13,11 +10,11 @@ GATE_TILTS = (
 _detector = cv2.QRCodeDetector()
 
 
-def decode(image: np.ndarray) -> tuple[str, np.ndarray] | None:
+def decode(image: np.ndarray) -> str | None:
     payload, points, _ = _detector.detectAndDecode(image)
     if not payload or points is None:
         return None
-    return payload, points.reshape(4, 2).astype(np.float32)
+    return payload
 
 
 def simulate_camera(rendered: np.ndarray) -> np.ndarray:
@@ -49,14 +46,6 @@ def passes_gate(rendered: np.ndarray, expected: str) -> bool:
         cv2.GaussianBlur(tilt(straight, offsets), (3, 3), 0) for offsets in GATE_TILTS
     ]
     for frame in [straight, *leaning]:
-        found = decode(frame)
-        if found is None or found[0] != expected:
+        if decode(frame) != expected:
             return False
     return True
-
-
-def rectify(capture: np.ndarray, corners: np.ndarray) -> np.ndarray:
-    target = page.CODE_CORNERS * RECTIFIED_SCALE
-    homography = cv2.getPerspectiveTransform(corners, target)
-    size = (int(page.PAGE_W * RECTIFIED_SCALE), int(page.PAGE_H * RECTIFIED_SCALE))
-    return cv2.warpPerspective(capture, homography, size, borderValue=(255, 255, 255))

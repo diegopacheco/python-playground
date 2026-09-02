@@ -1,8 +1,6 @@
 import cv2
 import numpy as np
 
-import qr
-
 DPI = 300
 MM = DPI / 25.4
 PAGE_W = int(round(210 * MM))
@@ -10,19 +8,9 @@ PAGE_H = int(round(297 * MM))
 MARGIN = int(round(18 * MM))
 RULE_GAP = int(round(8 * MM))
 CODE_MM = 25
-CODE_SIDE = qr.CODE_PX
+CODE_SIDE = int(round(CODE_MM * MM))
 CODE_X = (PAGE_W - CODE_SIDE) // 2
 CODE_Y = PAGE_H - MARGIN - CODE_SIDE
-
-CODE_CORNERS = np.array(
-    [
-        [CODE_X, CODE_Y],
-        [CODE_X + CODE_SIDE, CODE_Y],
-        [CODE_X + CODE_SIDE, CODE_Y + CODE_SIDE],
-        [CODE_X, CODE_Y + CODE_SIDE],
-    ],
-    dtype=np.float32,
-)
 
 
 def render(code: np.ndarray, page_id: str) -> np.ndarray:
@@ -43,5 +31,7 @@ def render(code: np.ndarray, page_id: str) -> np.ndarray:
         cv2.LINE_AA,
     )
 
-    page[CODE_Y : CODE_Y + CODE_SIDE, CODE_X : CODE_X + CODE_SIDE] = code
+    page[CODE_Y : CODE_Y + CODE_SIDE, CODE_X : CODE_X + CODE_SIDE] = cv2.resize(
+        code, (CODE_SIDE, CODE_SIDE), interpolation=cv2.INTER_AREA
+    )
     return page
