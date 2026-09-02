@@ -1,0 +1,52 @@
+qrcode-image-fun-poc/src/server.py
+  s_19102978ac70b2::t_35159bf6256170 6,14-17,43,45
+  s_19102978ac70b2::t_529bbee47a568e 13
+qrcode-image-fun-poc/src/qr.py
+  s_19102978ac70b2::t_2f68af54fff33c 7-8,11-14,36-37,40-49,51-53,56,60,62-64,66-68,70
+qrcode-image-fun-poc/src/store.py
+  s_19102978ac70b2::t_d20ddbea4816ec 12
+qrcode-image-fun-poc/app/renderer.js
+  s_19102978ac70b2::t_9df27c0821569d 100-108,135-137,146
+  s_19102978ac70b2::t_a286881ad23937 85-86,109,114-117,120,124-133,267
+qrcode-image-fun-poc/app/package.json
+  s_19102978ac70b2::t_7420d121d64bdf 16-18
+qrcode-image-fun-poc/README.md
+  s_19102978ac70b2::t_578b5005ef58be 5,18-19,29,32,48,50-52,59,65,79
+  s_19102978ac70b2::t_8ac29d8bdce8b3 15-17
+  s_19102978ac70b2::t_5ee9f40074923d 41-42,46,86,94,99,125,131,141
+  s_19102978ac70b2::t_47654e264b8c97 75
+qrcode-image-fun-poc/diagrams/architecture.svg
+  s_19102978ac70b2::t_fe15013204d89d 60-61,65,68-70,73-75,82
+qrcode-image-fun-poc/app/styles.css
+  s_19102978ac70b2::t_d33d1fd951f8fc 149
+qrcode-image-fun-poc/app/index.html
+  s_19102978ac70b2::t_a286881ad23937 60,73,93
+qrcode-image-fun-poc/src/pipeline.py
+  s_19102978ac70b2::t_d20ddbea4816ec 41
+  s_19102978ac70b2::t_5d4d3ce2d2d4b4 19,33
+qrcode-image-fun-poc/src/page.py
+  s_19102978ac70b2::t_9dd05523e74049 11,34-36
+qrcode-image-fun-poc/tests/test_pipeline.py
+  s_19102978ac70b2::t_40bb3d362ebd9b 75-76,80-83,87,90-91,93-96,99,103-107
+  s_19102978ac70b2::t_af71867581c167 71
+qrcode-image-fun-poc/src/optics.py
+  s_19102978ac70b2::t_3e28087ca7a178 13,17,49
+qrcode-image-fun-poc/app/package-lock.json
+  s_19102978ac70b2::t_c61a6ff74134b1 11-13,1401-1406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "950f28188780ba87020a9ab4643560116c729b65",
+  "prompts": {},
+  "sessions": {
+    "s_19102978ac70b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d4fbd85a-bdcd-46c0-8234-40c052fff951",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
