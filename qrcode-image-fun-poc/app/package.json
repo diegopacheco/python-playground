@@ -1,0 +1,17 @@
+{
+  "name": "qr-page-capture",
+  "productName": "QR Page Capture",
+  "version": "1.0.0",
+  "description": "Upload an image, print a page whose QR is styled from it, point the camera at that page once.",
+  "main": "main.js",
+  "author": "diegopacheco",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-packager . \"QR Page Capture\" --platform=darwin --arch=arm64 --out=dist --overwrite --icon=resources/icon.icns --extend-info=resources/Info.plist"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-packager": "^17.1.2"
+  }
+}

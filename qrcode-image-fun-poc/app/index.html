@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:8000; img-src 'self' http://127.0.0.1:8000 blob: data:; media-src blob:" />
+<title>QR Page Capture</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header>
+  <h1>QR Page Capture</h1>
+  <p>The optical link carries a 36-character id. The network carries the page.</p>
+</header>
+
+<nav>
+  <button data-tab="upload" class="active">1 &middot; Upload</button>
+  <button data-tab="page">2 &middot; Page</button>
+  <button data-tab="scan">3 &middot; Scan</button>
+  <button data-tab="pairs">4 &middot; Pairs</button>
+  <div class="status">server <b id="server-state">checking</b></div>
+</nav>
+
+<main>
+  <section id="upload" class="active">
+    <div class="card">
+      <h2>Upload an image</h2>
+      <p class="hint">The server mints a signed id, styles a Version 5 EC-H code from your picture, renders an A4 page at 300 DPI, and refuses anything the verification gate cannot decode.</p>
+      <div class="drop" id="drop">Drop an image here, or click to choose one</div>
+      <input type="file" id="file" accept="image/*" hidden />
+    </div>
+    <div class="card" id="upload-result" hidden>
+      <h2>Page minted</h2>
+      <p class="hint">
+        id <code id="result-id"></code> &middot;
+        <span class="tag" id="result-style"></span> &middot;
+        code printed at <span id="result-mm"></span> mm
+      </p>
+      <div class="row">
+        <button class="action" id="go-page">Open the page</button>
+        <button class="action ghost" id="go-scan">Scan it</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="page">
+    <div class="card">
+      <h2>Printable page</h2>
+      <p class="hint">2480 &times; 3508 px at 300 DPI. Print at 100% on matte paper — glare is where open-source decoders collapse hardest.</p>
+      <div class="row">
+        <button class="action" id="print">Print</button>
+        <button class="action ghost" id="save">Save PNG</button>
+      </div>
+    </div>
+    <div class="card"><img class="preview" id="page-img" alt="printable page" /></div>
+  </section>
+
+  <section id="scan">
+    <div class="card">
+      <h2>One camera position</h2>
+      <p class="hint">Hold the whole page in frame. The same frame carries the code and the page, so the server decodes the id, verifies its signature, and rectifies the page off the code's four corners.</p>
+      <div class="row">
+        <button class="action" id="scan-toggle">Start camera</button>
+        <button class="action ghost" id="shoot" disabled>Capture now</button>
+        <span class="mono" id="scan-state">idle</span>
+      </div>
+    </div>
+    <div class="card"><video id="video" playsinline muted></video></div>
+  </section>
+
+  <section id="pairs">
+    <div class="card">
+      <h2>Pairs</h2>
+      <p class="hint">Original upload, printable page, rectified capture.</p>
+      <button class="action ghost" id="refresh">Refresh</button>
+    </div>
+    <div class="pairs" id="pair-list"></div>
+  </section>
+</main>
+
+<dialog id="search">
+  <input id="search-input" placeholder="Go to a tab or a page id" />
+  <ul id="search-list"></ul>
+</dialog>
+
+<dialog id="shortcuts">
+  <input value="Shortcuts" readonly />
+  <ul id="shortcut-list"></ul>
+</dialog>
+
+<div id="toast"></div>
+<div id="print-area"><img id="print-img" alt="page to print" /></div>
+
+<script src="renderer.js"></script>
+</body>
+</html>
