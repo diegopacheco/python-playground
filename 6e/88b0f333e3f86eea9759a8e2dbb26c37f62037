@@ -1,0 +1,22 @@
+python3-posthog-fun/scripts/posthog-dashboard.sh
+  s_0f0ef684e0bf60::t_37a1e10471cbbf 1-8
+python3-posthog-fun/README.md
+  s_0f0ef684e0bf60::t_540dc65dc1ab81 125-126,130-143
+  s_0f0ef684e0bf60::t_71823e2ed2402a 144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "6e88b0f333e3f86eea9759a8e2dbb26c37f62037",
+  "prompts": {},
+  "sessions": {
+    "s_0f0ef684e0bf60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfa6bbe8-d6a6-43d9-ad45-611d7d3ac226",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
