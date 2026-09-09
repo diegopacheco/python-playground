@@ -56,6 +56,7 @@ Swagger UI is served at `http://localhost:8000/docs` and the schema at `/openapi
 |---|---|---|
 | `GET` | `/health` | Status, whether PostHog is configured, and the active timing knobs |
 | `GET` | `/dvds` | Catalog with an `available` flag per title |
+| `POST` | `/visits` | Records that a user opened the UI, emitting `app_opened` |
 | `POST` | `/rentals` | Rents a DVD. Body `{"dvd_id": "dvd-002", "user_id": "diego"}`. `409` if already out, `404` if unknown |
 | `POST` | `/rentals/{rental_id}/return` | Returns a rental. `404` if unknown |
 | `GET` | `/rentals` | Every rental with status and current lateness |
@@ -72,6 +73,7 @@ Swagger UI is served at `http://localhost:8000/docs` and the schema at `/openapi
 | `dvds_idle_rollup` | `dvd-rental-backend` | `window_minutes`, `window_hours`, `idle_count`, `rented_count`, `catalog_size` |
 | `dvd_top_rented` | `dvd-rental-backend` | `rank`, `dvd_id`, `title`, `rentals` |
 | `dvd_never_rented` | `dvd-rental-backend` | `rank`, `dvd_id`, `title`, `rentals` |
+| `app_opened` | user | `surface`, sent by the UI through `POST /visits` so DAUs, WAUs and retention have a real user signal |
 
 ## Design Decisions
 

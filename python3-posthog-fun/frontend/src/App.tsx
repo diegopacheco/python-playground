@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api/client";
 import { Catalog } from "./components/Catalog";
@@ -32,6 +32,11 @@ export function App() {
     },
     [refreshAll],
   );
+
+  useEffect(() => {
+    if (!userId) return;
+    void api.visit(userId).catch(() => undefined);
+  }, [userId]);
 
   const onRent = useCallback(
     (dvdId: string) => void run(() => api.rent(dvdId, userId)),

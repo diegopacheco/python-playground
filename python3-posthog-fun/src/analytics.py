@@ -30,6 +30,9 @@ class Analytics:
         if self._client is not None:
             self._client.capture(event, distinct_id=distinct_id, properties=properties)
 
+    def app_opened(self, user_id: str) -> None:
+        self._emit("app_opened", user_id, {"surface": "web"})
+
     def dvd_rented(self, rental: Rental, dvd: Dvd) -> None:
         self._emit(
             "dvd_rented",

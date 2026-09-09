@@ -6,7 +6,15 @@ from analytics import Analytics
 from config import Settings
 from models import Rental
 from rentals import DvdNotFound, DvdUnavailable, RentalNotFound, RentalService
-from schemas import DvdOut, EventOut, HealthOut, RankedDvdOut, RentRequest, RentalOut
+from schemas import (
+    DvdOut,
+    EventOut,
+    HealthOut,
+    RankedDvdOut,
+    RentalOut,
+    RentRequest,
+    VisitRequest,
+)
 from stats import never_rented, top_rented
 from store import Store
 
@@ -42,6 +50,11 @@ def build_router(
             rollup_interval_minutes=settings.rollup_interval_minutes,
             deadline_scan_seconds=settings.deadline_scan_seconds,
         )
+
+    @router.post("/visits", status_code=202)
+    def record_visit(request: VisitRequest) -> dict[str, str]:
+        analytics.app_opened(request.user_id)
+        return {"status": "recorded"}
 
     @router.get("/dvds")
     def list_dvds() -> list[DvdOut]:

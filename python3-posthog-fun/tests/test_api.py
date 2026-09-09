@@ -87,6 +87,30 @@ def test_the_event_feed_shows_what_was_sent_to_posthog(client):
     assert events[0]["properties"]["title"] == "The Matrix"
 
 
+def test_opening_the_app_counts_the_user_as_active(client):
+    client.post("/visits", json={"user_id": "diego"})
+
+    events = client.get("/events").json()
+
+    assert events[0]["event"] == "app_opened"
+    assert events[0]["distinct_id"] == "diego"
+
+
+def test_each_visit_is_counted_so_daily_and_weekly_actives_can_be_derived(client):
+    client.post("/visits", json={"user_id": "diego"})
+    client.post("/visits", json={"user_id": "rebeca"})
+    client.post("/visits", json={"user_id": "diego"})
+
+    opened = [e for e in client.get("/events").json() if e["event"] == "app_opened"]
+
+    assert len(opened) == 3
+    assert {e["distinct_id"] for e in opened} == {"diego", "rebeca"}
+
+
+def test_a_visit_without_a_user_is_rejected(client):
+    assert client.post("/visits", json={}).status_code == 422
+
+
 def test_health_reports_the_timing_knobs_used_for_testing(client):
     body = client.get("/health").json()
 

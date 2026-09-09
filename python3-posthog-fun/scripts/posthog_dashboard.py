@@ -40,6 +40,37 @@ def trends(event: str, label: str, math: str = "total", math_property: str | Non
     }
 
 
+def active_users(event: str, math: str, interval: str, days: int):
+    return {
+        "kind": "InsightVizNode",
+        "source": {
+            "kind": "TrendsQuery",
+            "series": [{"kind": "EventsNode", "event": event, "name": event, "math": math}],
+            "interval": interval,
+            "dateRange": {"date_from": f"-{days}d"},
+            "trendsFilter": {"display": "ActionsLineGraph"},
+        },
+    }
+
+
+def retention(event: str):
+    entity = {"id": event, "name": event, "type": "events"}
+    return {
+        "kind": "InsightVizNode",
+        "source": {
+            "kind": "RetentionQuery",
+            "dateRange": {"date_from": "-30d"},
+            "retentionFilter": {
+                "period": "Week",
+                "targetEntity": entity,
+                "returningEntity": entity,
+                "retentionType": "retention_first_time",
+                "totalIntervals": 8,
+            },
+        },
+    }
+
+
 def table(sql: str):
     return {
         "kind": "DataTableNode",
@@ -69,7 +100,24 @@ ORDER BY times_reported_never_rented DESC
 LIMIT 5
 """.strip()
 
+ACTIVITY_EVENT = "app_opened"
+
 INSIGHTS = [
+    {
+        "name": "Daily active users (DAUs)",
+        "description": "Unique users who opened the DVD rental app each day.",
+        "query": active_users(ACTIVITY_EVENT, "dau", "day", 30),
+    },
+    {
+        "name": "Weekly active users (WAUs)",
+        "description": "Unique users who opened the DVD rental app each week.",
+        "query": active_users(ACTIVITY_EVENT, "weekly_active", "week", 90),
+    },
+    {
+        "name": "Retention",
+        "description": "Users who opened the app and came back in a later week.",
+        "query": retention(ACTIVITY_EVENT),
+    },
     {
         "name": "DVD rentals over time",
         "description": "Counter of dvd_rented, the base signal for every rental ranking.",

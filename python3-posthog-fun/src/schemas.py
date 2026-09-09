@@ -8,6 +8,10 @@ class RentRequest(BaseModel):
     user_id: str
 
 
+class VisitRequest(BaseModel):
+    user_id: str
+
+
 class DvdOut(BaseModel):
     dvd_id: str
     title: str

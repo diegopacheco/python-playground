@@ -21,6 +21,11 @@ export const api = {
   topRented: () => request<RankedDvd[]>("/stats/top-rented"),
   neverRented: () => request<RankedDvd[]>("/stats/never-rented"),
   events: () => request<EmittedEvent[]>("/events"),
+  visit: (userId: string) =>
+    request<{ status: string }>("/visits", {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId }),
+    }),
   rent: (dvdId: string, userId: string) =>
     request<Rental>("/rentals", {
       method: "POST",
