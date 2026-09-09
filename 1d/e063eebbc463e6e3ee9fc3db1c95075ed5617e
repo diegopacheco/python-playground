@@ -1,0 +1,131 @@
+python3-posthog-fun/tests/test_stats.py
+  s_0f0ef684e0bf60::t_a0c67abc5a4d1f 1-61
+python3-posthog-fun/tests/test_rollup.py
+  s_0f0ef684e0bf60::t_a0c67abc5a4d1f 2-25,27-53
+  s_0f0ef684e0bf60::t_e07949c5f22dff 1,26
+python3-posthog-fun/scripts/status.sh
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-14
+python3-posthog-fun/frontend/src/components/Catalog.tsx
+  s_0f0ef684e0bf60::t_a4c413acd9e3d5 1-27
+python3-posthog-fun/src/rentals.py
+  s_0f0ef684e0bf60::t_19bf969a956ef5 1-62
+python3-posthog-fun/frontend/src/api/types.ts
+  s_0f0ef684e0bf60::t_508e655b74309f 1-44
+python3-posthog-fun/printscreens/architecture.svg
+  s_0f0ef684e0bf60::t_3360150e157f7f 48,51,53,56
+  s_0f0ef684e0bf60::t_779f78c0b5ec8f 1,3
+  s_0f0ef684e0bf60::t_3a009192a50b1d 2,4-47,49-50,52,54-55,57-66
+python3-posthog-fun/install-deps.sh
+  s_0f0ef684e0bf60::t_f227b4dc32a600 1-3
+python3-posthog-fun/.gitignore
+  s_0f0ef684e0bf60::t_7b5a1b8b4b6948 7
+  s_0f0ef684e0bf60::t_3454a6e690f348 1-6,8-14
+python3-posthog-fun/src/rollup.py
+  s_0f0ef684e0bf60::t_19bf969a956ef5 1-29
+python3-posthog-fun/frontend/index.html
+  s_0f0ef684e0bf60::t_21b8051fd39c96 1-12
+python3-posthog-fun/src/api.py
+  s_0f0ef684e0bf60::t_49c94ff3f08b89 1-117
+python3-posthog-fun/src/store.py
+  s_0f0ef684e0bf60::t_b93d5b2ea03e89 34,36-42,44-45,47
+  s_0f0ef684e0bf60::t_6671eb2e5290b7 1-33,35,43,46,48-81
+python3-posthog-fun/src/analytics.py
+  s_0f0ef684e0bf60::t_de04d1e7d9365f 1-48,50-57,61-75,77-110
+  s_0f0ef684e0bf60::t_6e18fb19d34c59 49,58-60
+  s_0f0ef684e0bf60::t_46d37768ee4406 76
+python3-posthog-fun/frontend/src/main.tsx
+  s_0f0ef684e0bf60::t_fcfd9363b32d99 1-14
+python3-posthog-fun/tests/test_api.py
+  s_0f0ef684e0bf60::t_c455eae991b54c 9
+  s_0f0ef684e0bf60::t_b0a16de0dfa976 1-8,10-96
+python3-posthog-fun/src/schemas.py
+  s_0f0ef684e0bf60::t_49c94ff3f08b89 1-51
+python3-posthog-fun/src/stats.py
+  s_0f0ef684e0bf60::t_de04d1e7d9365f 1-33
+python3-posthog-fun/frontend/src/components/Panel.tsx
+  s_0f0ef684e0bf60::t_a4c413acd9e3d5 1-21
+python3-posthog-fun/tests/conftest.py
+  s_0f0ef684e0bf60::t_67e6ac0ac0a126 1-41
+  s_0f0ef684e0bf60::t_e07949c5f22dff 42-43
+python3-posthog-fun/src/workers.py
+  s_0f0ef684e0bf60::t_19bf969a956ef5 1-25
+python3-posthog-fun/scripts/ports.env
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-2
+python3-posthog-fun/frontend/tsconfig.json
+  s_0f0ef684e0bf60::t_96cef63be8d353 5
+  s_0f0ef684e0bf60::t_21b8051fd39c96 1-4,6-19
+python3-posthog-fun/src/models.py
+  s_0f0ef684e0bf60::t_8eae842265a97f 1-47
+python3-posthog-fun/src/catalog.py
+  s_0f0ef684e0bf60::t_8eae842265a97f 1-14
+python3-posthog-fun/frontend/src/components/RentalList.tsx
+  s_0f0ef684e0bf60::t_a4c413acd9e3d5 1-12,18-19,24-33,35-50
+  s_0f0ef684e0bf60::t_0fe3ca3bed306b 13-17,20-23,34
+python3-posthog-fun/src/config.py
+  s_0f0ef684e0bf60::t_8eae842265a97f 1-25
+python3-posthog-fun/scripts/stop-all.sh
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-9
+python3-posthog-fun/frontend/src/hooks/usePolling.ts
+  s_0f0ef684e0bf60::t_2ee590156caf18 1-31
+python3-posthog-fun/frontend/src/components/EventFeed.tsx
+  s_0f0ef684e0bf60::t_a4c413acd9e3d5 1-21
+python3-posthog-fun/frontend/package.json
+  s_0f0ef684e0bf60::t_16b1cfc5a7638d 1-15,17-23
+  s_0f0ef684e0bf60::t_96cef63be8d353 16
+python3-posthog-fun/scripts/start-all.sh
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-23
+python3-posthog-fun/src/main.py
+  s_0f0ef684e0bf60::t_538445b79b8b9b 1-7,9-20,22-23,25-60
+  s_0f0ef684e0bf60::t_c455eae991b54c 8,21,24
+python3-posthog-fun/frontend/src/App.tsx
+  s_0f0ef684e0bf60::t_fcfd9363b32d99 1-99
+python3-posthog-fun/tests/test_rentals.py
+  s_0f0ef684e0bf60::t_47643128101b29 1-92
+python3-posthog-fun/run.sh
+  s_0f0ef684e0bf60::t_f227b4dc32a600 3
+  s_0f0ef684e0bf60::t_729514710806d3 1-2
+python3-posthog-fun/frontend/src/styles.css
+  s_0f0ef684e0bf60::t_d08d78f8fb8887 122,129
+  s_0f0ef684e0bf60::t_dcf7650b75f768 1-121,123-128,130-223
+python3-posthog-fun/README.md
+  s_0f0ef684e0bf60::t_a39cd85872827b 1-153,155-162,165-179
+  s_0f0ef684e0bf60::t_e2bfe984186cf2 154,163-164
+python3-posthog-fun/requirements-dev.txt
+  s_0f0ef684e0bf60::t_67e6ac0ac0a126 1-2
+python3-posthog-fun/scripts/setup.sh
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-21
+python3-posthog-fun/frontend/src/components/Leaderboard.tsx
+  s_0f0ef684e0bf60::t_a4c413acd9e3d5 1-26
+python3-posthog-fun/scripts/ui.sh
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-6
+python3-posthog-fun/frontend/src/vite-env.d.ts
+  s_0f0ef684e0bf60::t_96cef63be8d353 1
+python3-posthog-fun/frontend/vite.config.ts
+  s_0f0ef684e0bf60::t_21b8051fd39c96 1-14
+python3-posthog-fun/frontend/src/api/client.ts
+  s_0f0ef684e0bf60::t_508e655b74309f 1-31
+python3-posthog-fun/scripts/test-all.sh
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-15
+python3-posthog-fun/frontend/src/hooks/useDashboard.ts
+  s_0f0ef684e0bf60::t_2ee590156caf18 1-25
+python3-posthog-fun/scripts/common.sh
+  s_0f0ef684e0bf60::t_34a634f43e625a 1-110
+python3-posthog-fun/frontend/bun.lock
+  s_0f0ef684e0bf60::t_90df1c59d811e1 1-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1de063eebbc463e6e3ee9fc3db1c95075ed5617e",
+  "prompts": {},
+  "sessions": {
+    "s_0f0ef684e0bf60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfa6bbe8-d6a6-43d9-ad45-611d7d3ac226",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
