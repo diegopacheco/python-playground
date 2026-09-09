@@ -228,7 +228,81 @@ DVDs` counts how many rollup windows reported a title as never rented, so Akira 
 that sat unrented the longest. Both are HogQL tables, which is why they rank exactly five rows
 rather than relying on a breakdown limit.
 
+## Session replay
+
+![Session replay](printscreens/posthog/posthog-session-recording.png)
+
+A real session of the React UI replayed in PostHog: 147 seconds, 10 clicks and 2 keypresses,
+attributed to the person `diego` rather than an anonymous id. The player on the right is the actual
+app, and the `user` field is rendered as `*****` because every input is masked before the recording
+leaves the browser. The badges the app draws in its own header, `POSTHOG ON` and `REPLAY RECORDING`,
+come from the SDK's live state, so the UI tells you whether it is being recorded without opening
+PostHog.
+
+Replay is the one signal that cannot come from the backend. Everything else this project sends is
+captured server side with the Python SDK, but a replay is the DOM being recorded by `rrweb` inside
+the browser, so it needs `posthog-js` in the React app.
+
+### What it took
+
+**1. Turn recording on for the project.** Settings, then Session replay, then enable
+`Record user sessions`. Nothing in the browser can start a recording while this is off, and the
+`/flags/` response the SDK caches tells it whether recording is allowed.
+
+**2. Give the browser bundle the project token.** The token is read from the same env file the
+backend uses, injected at build time, so no second place to configure:
+
+```ts
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, resolve(here, ".."), "");
+  return {
+    define: {
+      __POSTHOG_KEY__: JSON.stringify(env.POSTHOG_PROJECT_TOKEN ?? ""),
+      __POSTHOG_HOST__: JSON.stringify(env.POSTHOG_HOST ?? ""),
+    },
+  };
+});
+```
+
+The project token is a write-only ingestion key and is meant to ship in client code. The personal
+API key never goes near the browser.
+
+**3. Initialise the SDK.** `frontend/src/analytics/posthog.ts`:
+
+```ts
+posthog.init(__POSTHOG_KEY__, {
+  api_host: __POSTHOG_HOST__,
+  defaults: "2025-05-24",
+  capture_pageview: true,
+  capture_pageleave: true,
+  person_profiles: "always",
+  disable_session_recording: false,
+  session_recording: { maskAllInputs: true },
+  loaded: (client) => client.startSessionRecording(),
+});
+```
+
+**4. Name the person.** The UI calls `posthog.identify(userId)` when the user field changes, which is
+why the recording is filed under `diego` instead of an anonymous device id, and why it lines up with
+the `app_opened` events the backend sends for the same user.
+
+### The two things that actually blocked it
+
+`defaults: "2025-05-24"` is the one that mattered. Without it `posthog-js` 1.428 initialised
+correctly, loaded feature flags, and `identify()` reached PostHog, but no captured event ever
+arrived. The tell was that `$autocapture` and `$pageleave` started appearing once the defaults
+version was set, and neither of those is ever called by this code, so the SDK's whole automatic
+capture pipeline had been dormant rather than any single call failing.
+
+The second was caching. The browser had already cached a `/flags/` response saying recording was
+disabled, from before the project setting was switched on. A normal reload reuses it, so a hard
+reload is needed once after enabling recording.
+
+Worth knowing before turning this on: `posthog-js` takes the bundle from 196 kB to 475 kB, and
+replay records real user sessions, so keep `maskAllInputs` on.
+
 ### PostHog event feed
+
 
 
 ![Events](printscreens/events.png)

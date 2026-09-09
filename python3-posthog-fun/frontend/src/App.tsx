@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { identifyUser, replayState, type ReplayState } from "./analytics/posthog";
 import { api } from "./api/client";
 import { Catalog } from "./components/Catalog";
 import { EventFeed } from "./components/EventFeed";
@@ -15,6 +16,11 @@ export function App() {
     useDashboard(POLL_MS);
   const [userId, setUserId] = useState("diego");
   const [busy, setBusy] = useState(false);
+  const [replay, setReplay] = useState<ReplayState>({
+    recording: false,
+    replay: null,
+    sessionId: null,
+  });
   const [actionError, setActionError] = useState<string | null>(null);
 
   const run = useCallback(
@@ -35,8 +41,14 @@ export function App() {
 
   useEffect(() => {
     if (!userId) return;
+    identifyUser(userId);
     void api.visit(userId).catch(() => undefined);
   }, [userId]);
+
+  useEffect(() => {
+    const tick = setInterval(() => setReplay(replayState()), 1500);
+    return () => clearInterval(tick);
+  }, []);
 
   const onRent = useCallback(
     (dvdId: string) => void run(() => api.rent(dvdId, userId)),
@@ -59,6 +71,14 @@ export function App() {
           <span className={`badge ${health.data?.posthog_enabled ? "badge-active" : "badge-off"}`}>
             posthog {health.data?.posthog_enabled ? "on" : "off"}
           </span>
+          <span className={`badge ${replay.recording ? "badge-active" : "badge-overdue"}`}>
+            replay {replay.recording ? "recording" : "off"}
+          </span>
+          {replay.replay ? (
+            <a className="meta" href={replay.replay} target="_blank" rel="noreferrer">
+              open replay
+            </a>
+          ) : null}
         </div>
       </header>
 
