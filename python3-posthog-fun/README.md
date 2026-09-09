@@ -189,7 +189,47 @@ breakdown shipped on the `dvd_deadline_missed` event, so what you read here is w
 The top 5 most rented titles with their rental counts. The ranking is computed from the same rental
 history that produces the `dvd_top_rented` events, so the panel and the PostHog counter cannot drift.
 
+## The PostHog dashboard
+
+The five counters and the three activity metrics rendered in PostHog, on the **DVD metrics**
+dashboard built by `scripts/posthog_dashboard.py`.
+
+### Active users
+
+![Active users](printscreens/posthog/dashboard-active-users.png)
+
+`Daily active users` and `Weekly active users` both peak at 4, the four distinct people who opened
+the app. These count the `app_opened` event the UI reports through `POST /visits`, not `$pageview`:
+a REST backend never emits a pageview, so the stock template tiles matched nothing until they were
+repointed at an event this app really sends.
+
+### Rentals and retention
+
+![Rentals and retention](printscreens/posthog/dashboard-rentals-retention.png)
+
+`DVD rentals over time` climbs to 56 `dvd_rented` events. `Retention` shows the `Sep 6 to Sep 12`
+cohort at size 4 and 100% in Week 0. The later columns are 0% because retention needs time to
+pass before anyone can come back, not because the query is broken.
+
+### Deadlines and idle stock
+
+![Deadlines and idle stock](printscreens/posthog/dashboard-deadlines-idle.png)
+
+`Missed rental deadlines over time` reaches 19 `dvd_deadline_missed` events, each emitted exactly
+once per late rental. `Idle DVDs per rollup window` averages about 7 titles earning nothing per
+window, read from the `idle_count` property of `dvds_idle_rollup`.
+
+### The two leaderboards
+
+![Leaderboards](printscreens/posthog/dashboard-top5.png)
+
+`Top 5 most rented DVDs` ranks The Matrix at 19 ahead of Pulp Fiction at 11. `Top 5 never rented
+DVDs` counts how many rollup windows reported a title as never rented, so Akira at 65 is the title
+that sat unrented the longest. Both are HogQL tables, which is why they rank exactly five rows
+rather than relying on a breakdown limit.
+
 ### PostHog event feed
+
 
 ![Events](printscreens/events.png)
 
