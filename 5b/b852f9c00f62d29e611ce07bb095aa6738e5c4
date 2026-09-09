@@ -1,0 +1,39 @@
+python3-posthog-fun/tests/test_api.py
+  s_0f0ef684e0bf60::t_4aa553b332058d 90-113
+python3-posthog-fun/frontend/vite.config.ts
+  s_0f0ef684e0bf60::t_c0747897720e50 4
+  s_0f0ef684e0bf60::t_bc8eef9eca237a 5,7-17,19
+python3-posthog-fun/src/analytics.py
+  s_0f0ef684e0bf60::t_ecf15de0b7ab96 33-35
+python3-posthog-fun/src/schemas.py
+  s_0f0ef684e0bf60::t_ecf15de0b7ab96 11-14
+python3-posthog-fun/frontend/src/api/client.ts
+  s_0f0ef684e0bf60::t_169cbe36be556d 24-28
+python3-posthog-fun/scripts/posthog_dashboard.py
+  s_0f0ef684e0bf60::t_62e87ac5f0befb 43-73
+  s_0f0ef684e0bf60::t_67a434feb59727 103-104,106-120
+python3-posthog-fun/frontend/src/App.tsx
+  s_0f0ef684e0bf60::t_169cbe36be556d 37-38
+  s_0f0ef684e0bf60::t_e726eae2923669 1,36,39-40
+python3-posthog-fun/src/api.py
+  s_0f0ef684e0bf60::t_ecf15de0b7ab96 9-17,54-57
+  s_0f0ef684e0bf60::t_dd8a1e25121bb3 58
+python3-posthog-fun/README.md
+  s_0f0ef684e0bf60::t_bef2fa39bc7f34 59,76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "5bb852f9c00f62d29e611ce07bb095aa6738e5c4",
+  "prompts": {},
+  "sessions": {
+    "s_0f0ef684e0bf60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfa6bbe8-d6a6-43d9-ad45-611d7d3ac226",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
