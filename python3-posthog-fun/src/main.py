@@ -37,6 +37,8 @@ def create_app(posthog: Posthog | None = posthog_client) -> FastAPI:
         yield
         for worker in workers:
             worker.stop()
+        if posthog is not None:
+            posthog.shutdown()
 
     app = FastAPI(title="DVD Rental API", lifespan=lifespan)
     app.add_middleware(
