@@ -123,20 +123,20 @@ All scripts live in `scripts/` and run from any directory of the repository.
 | `./scripts/ui.sh` | Opens the UI in the browser |
 | `./scripts/stop-all.sh` | Stops every service |
 | `./scripts/set-posthog-key.sh` | Stores your PostHog personal API key, prompting with hidden input |
-| `./scripts/posthog-dashboard.sh` | Creates the five metric insights on the PostHog dashboard |
+| `./scripts/posthog_dashboard.py` | Creates the five metric insights on the PostHog dashboard |
 
 Ports are declared in `scripts/ports.env`.
 
 ### PostHog dashboard
 
-`posthog-dashboard.sh` builds the dashboard from the events this app emits. It validates every
+`posthog_dashboard.py` builds the dashboard from the events this app emits. It validates every
 query against the live API first and creates nothing unless `--apply` is passed, and it matches
 insights by name so re-running updates them instead of duplicating them.
 
 ```bash
 ./scripts/set-posthog-key.sh
-./scripts/posthog-dashboard.sh
-./scripts/posthog-dashboard.sh --apply
+./scripts/posthog_dashboard.py
+./scripts/posthog_dashboard.py --apply
 ```
 
 The key needs the `project:read`, `dashboard:write`, `insight:write` and `query:read` scopes.

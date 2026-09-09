@@ -1,8 +1,16 @@
+#!/usr/bin/env python3
 import json
 import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+SELF = Path(__file__).resolve()
+VENV_PYTHON = SELF.parents[1] / ".venv" / "bin" / "python"
+
+if VENV_PYTHON.exists() and Path(sys.executable).resolve() != VENV_PYTHON.resolve():
+    os.execv(str(VENV_PYTHON), [str(VENV_PYTHON), str(SELF), *sys.argv[1:]])
 
 from dotenv import load_dotenv
 
