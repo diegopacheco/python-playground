@@ -1,0 +1,14 @@
+.venv/
+.run/
+__pycache__/
+.pytest_cache/
+
+.env
+.env.example
+.env.local
+.env.*.local
+
+.posthog-wizard-cache/
+
+frontend/node_modules/
+frontend/dist/

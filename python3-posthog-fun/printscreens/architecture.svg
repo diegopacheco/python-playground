@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="470" viewBox="0 0 1060 470" font-family="Caveat, 'Comic Sans MS', cursive">
+  <defs>
+    <filter id="wobble" filterUnits="userSpaceOnUse" x="0" y="0" width="1060" height="470">
+      <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="3" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <marker id="tip" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M1 1 L11 6 L1 11" fill="none" stroke="#3d3d3d" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;display=swap');
+      .box { filter: url(#wobble); stroke: #3d3d3d; stroke-width: 2.4; rx: 12; }
+      .ttl { font-size: 25px; font-weight: 700; fill: #24292f; text-anchor: middle; }
+      .sub { font-size: 19px; fill: #57606a; text-anchor: middle; }
+      .arw { filter: url(#wobble); stroke: #3d3d3d; stroke-width: 2.4; fill: none; stroke-linecap: round; marker-end: url(#tip); }
+      .lbl { font-size: 18px; fill: #57606a; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect class="box" x="40"  y="50"  width="200" height="95" fill="#d9ecff"/>
+  <text class="ttl" x="140" y="90">React 19 UI</text>
+  <text class="sub" x="140" y="116">bun + vite :5173</text>
+
+  <rect class="box" x="310" y="50"  width="210" height="95" fill="#ddf7dd"/>
+  <text class="ttl" x="415" y="90">REST API</text>
+  <text class="sub" x="415" y="116">FastAPI :8000</text>
+
+  <rect class="box" x="590" y="50"  width="190" height="95" fill="#fff3cc"/>
+  <text class="ttl" x="685" y="90">Analytics</text>
+  <text class="sub" x="685" y="116">typed events</text>
+
+  <rect class="box" x="850" y="50"  width="170" height="95" fill="#eadcff"/>
+  <text class="ttl" x="935" y="90">PostHog</text>
+  <text class="sub" x="935" y="116">cloud</text>
+
+  <rect class="box" x="310" y="270" width="210" height="85" fill="#f2f2f2"/>
+  <text class="ttl" x="415" y="308">Store</text>
+  <text class="sub" x="415" y="332">in-memory</text>
+
+  <rect class="box" x="560" y="270" width="210" height="85" fill="#ffd9d9"/>
+  <text class="ttl" x="665" y="305">deadline scan</text>
+  <text class="sub" x="665" y="330">every N seconds</text>
+
+  <rect class="box" x="810" y="270" width="210" height="85" fill="#ffd9d9"/>
+  <text class="ttl" x="915" y="305">idle rollup</text>
+  <text class="sub" x="915" y="330">every N minutes</text>
+
+  <path class="arw" d="M240 97 Q272 92 305 97"/>
+  <text class="lbl" x="272" y="80">/api</text>
+
+  <path class="arw" d="M520 97 Q552 103 585 97"/>
+
+  <path class="arw" d="M780 97 Q812 92 845 97"/>
+  <text class="lbl" x="812" y="80">capture</text>
+
+  <path class="arw" d="M415 145 Q421 205 415 265"/>
+  <text class="lbl" x="460" y="212">reads</text>
+
+  <path class="arw" d="M665 265 L672 152"/>
+  <text class="lbl" x="612" y="212">missed</text>
+
+  <path class="arw" d="M862 268 L784 154"/>
+  <text class="lbl" x="855" y="212">counts</text>
+
+  <text class="sub" x="530" y="440" font-size="21">rent · miss deadline · idle rollup · top 5 rented · top 5 never rented</text>
+</svg>
