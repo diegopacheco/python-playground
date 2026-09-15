@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Games</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Games</h1>
+    <span id="count"></span>
+  </header>
+  <main>
+    <section class="panel">
+      <h2 id="form-title">Add game</h2>
+      <form id="game-form">
+        <input type="hidden" id="game-id">
+        <label>Name<input id="name" required maxlength="200"></label>
+        <label>Release year<input id="release_year" type="number" min="1950" max="2100" required></label>
+        <label>Image URL<input id="image_url" type="url" required></label>
+        <label>Description<textarea id="description" rows="4" maxlength="2000"></textarea></label>
+        <div class="actions">
+          <button type="submit" id="submit">Create</button>
+          <button type="button" id="cancel" class="secondary" hidden>Cancel</button>
+        </div>
+        <p id="message" role="status"></p>
+      </form>
+    </section>
+    <section id="games" class="grid"></section>
+  </main>
+  <template id="card">
+    <article class="card">
+      <img alt="">
+      <div class="body">
+        <h3></h3>
+        <span class="year"></span>
+        <p class="desc"></p>
+        <code class="id"></code>
+        <div class="actions">
+          <button class="edit secondary">Edit</button>
+          <button class="delete danger">Delete</button>
+        </div>
+      </div>
+    </article>
+  </template>
+  <script src="app.js"></script>
+</body>
+</html>
