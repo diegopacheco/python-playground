@@ -14,3 +14,9 @@ else
 fi
 
 "$SCRIPTS/status.sh"
+
+url="http://localhost:$port"
+log ""
+log "UI:       $url/"
+log "API:      $url/api/games"
+log "Swagger:  $url/docs"
