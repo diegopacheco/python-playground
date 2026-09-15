@@ -1,0 +1,90 @@
+python-request-state/README.md
+  s_193519175f88a2::t_dad67a89cc26e6 1-146
+python-request-state/src/dao.py
+  s_193519175f88a2::t_00de4b06dcbed0 1,7,9-23,25-30,32,35-37
+  s_193519175f88a2::t_0e549e6fffd688 2-6,8,24,31,33-34,38
+python-request-state/requirements.txt
+  s_193519175f88a2::t_00de4b06dcbed0 3
+  s_193519175f88a2::t_0e549e6fffd688 1-2
+python-request-state/static/styles.css
+  s_193519175f88a2::t_909bababe71369 1-27
+python-request-state/scripts/start-all.sh
+  s_193519175f88a2::t_33368f0d02941e 1-16
+python-request-state/scripts/sql-console.sh
+  s_193519175f88a2::t_33368f0d02941e 1-8
+python-request-state/src/main.py
+  s_193519175f88a2::t_0e549e6fffd688 7-10,24,30,34,36
+  s_193519175f88a2::t_00de4b06dcbed0 1-6,11-23,25-29,31-33,35
+python-request-state/pytest.ini
+  s_193519175f88a2::t_0866827ddb6243 1-3
+python-request-state/install-deps.sh
+  s_193519175f88a2::t_33368f0d02941e 1-3
+python-request-state/tests/test_service.py
+  s_193519175f88a2::t_00de4b06dcbed0 6,10,12,20,23-25,28-31,34-35,37,40-42,45-49,52,55,57,59-64
+  s_193519175f88a2::t_0866827ddb6243 1-5,7-9,11,13-19,21-22,26-27,32-33,36,38-39,43-44,50-51,53-54,56,58,65-69
+python-request-state/src/models.py
+  s_193519175f88a2::t_0e549e6fffd688 2-4,7-12,14
+  s_193519175f88a2::t_00de4b06dcbed0 1,5-6,13
+python-request-state/static/index.html
+  s_193519175f88a2::t_909bababe71369 1-49
+python-request-state/.gitignore
+  s_193519175f88a2::t_33368f0d02941e 1-3
+python-request-state/requirements-dev.txt
+  s_193519175f88a2::t_0e549e6fffd688 1-2
+python-request-state/scripts/test-all.sh
+  s_193519175f88a2::t_33368f0d02941e 1-7
+python-request-state/static/app.js
+  s_193519175f88a2::t_909bababe71369 1-109
+python-request-state/run.sh
+  s_193519175f88a2::t_33368f0d02941e 3
+  s_193519175f88a2::t_0ae7b2be8314ec 1-2
+python-request-state/tests/test_api.py
+  s_193519175f88a2::t_0866827ddb6243 1-2,4-12,14-19,21-22,24-32,35,37-52
+  s_193519175f88a2::t_00de4b06dcbed0 3,13,20,23,33-34,36
+python-request-state/src/db.py
+  s_193519175f88a2::t_00de4b06dcbed0 1,4,13-19,22-25,27-32
+  s_193519175f88a2::t_0e549e6fffd688 2-3,5-12,20-21,26
+python-request-state/src/service.py
+  s_193519175f88a2::t_0e549e6fffd688 1-7,9-14,17,20-23,27-28,32-34,37
+  s_193519175f88a2::t_00de4b06dcbed0 8,15-16,18-19,24-26,29-31,35-36
+python-request-state/scripts/status.sh
+  s_193519175f88a2::t_33368f0d02941e 1-18
+python-request-state/scripts/common.sh
+  s_193519175f88a2::t_33368f0d02941e 1-110
+python-request-state/scripts/ui.sh
+  s_193519175f88a2::t_33368f0d02941e 1-12
+python-request-state/tests/conftest.py
+  s_193519175f88a2::t_0866827ddb6243 2-5,7-11,17,19-21,26-31
+  s_193519175f88a2::t_00de4b06dcbed0 1,6,12-16,18,22-25
+python-request-state/printscreens/architecture.svg
+  s_193519175f88a2::t_92d78521cb5e25 1-14,16-34,37-41
+  s_193519175f88a2::t_a115a6d9c20e57 15,35-36
+python-request-state/scripts/ports.env
+  s_193519175f88a2::t_33368f0d02941e 1
+python-request-state/src/middleware.py
+  s_193519175f88a2::t_0e549e6fffd688 1-3,5-12,14-15,18-22
+  s_193519175f88a2::t_00de4b06dcbed0 4,13,16-17
+python-request-state/scripts/setup.sh
+  s_193519175f88a2::t_33368f0d02941e 1-9
+python-request-state/scripts/stop-all.sh
+  s_193519175f88a2::t_33368f0d02941e 1-10
+python-request-state/src/controller.py
+  s_193519175f88a2::t_00de4b06dcbed0 3,5-6,8,11,15-17,20-22,25-27,30-32,36-37
+  s_193519175f88a2::t_0e549e6fffd688 1-2,4,7,9-10,12-14,18-19,23-24,28-29,33-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f5e0229bbd592f26f6d1ebedb22cc815905dbdd0",
+  "prompts": {},
+  "sessions": {
+    "s_193519175f88a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0919326c-c72b-479f-a56a-861569e96826",
+        "model": "unknown"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
