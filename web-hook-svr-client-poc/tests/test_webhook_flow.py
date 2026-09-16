@@ -47,16 +47,27 @@ class WebhookFlowTest(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
-    def post(self, path: str, body: dict | None = None) -> tuple[int, dict]:
+    def post(self, path: str, body: dict | None = None, headers: dict[str, str] | None = None) -> tuple[int, dict]:
         request = urllib.request.Request(
-            self.base + path, data=json.dumps(body or {}).encode(), headers={"Content-Type": "application/json"}, method="POST"
+            self.base + path,
+            data=json.dumps(body or {}).encode(),
+            headers={"Content-Type": "application/json", **(headers or {})},
+            method="POST",
         )
         try:
             with urllib.request.urlopen(request) as response:
+                self.last_headers = response.headers
                 return response.status, json.load(response)
         except urllib.error.HTTPError as error:
             with error:
+                self.last_headers = error.headers
                 return error.code, json.load(error)
+
+    def order_and_deliver(self, headers: dict[str, str] | None = None) -> str:
+        _, created = self.post("/api/houses", {"model": "cedar", "lot": "Lot C-03", "buyer_alias": "buyer-0003"}, headers)
+        for _ in range(6):
+            self.post(f"/api/houses/{created['house']['id']}/advance")
+        return created["house"]["correlation_id"]
 
     def test_every_house_change_reaches_the_listener_as_a_valid_signed_event(self) -> None:
         status, created = self.post("/api/houses", {"model": "cedar", "lot": "Lot C-03", "buyer_alias": "buyer-0003"})
@@ -90,6 +101,27 @@ class WebhookFlowTest(unittest.TestCase):
         self.post("/api/houses", {"model": "aspen", "lot": "Lot A-01", "buyer_alias": "buyer-0001"})
         self.relay = start(FakeRelay)
         self.assertEqual([], self.publisher.deliveries)
+
+    def test_one_correlation_id_ties_every_webhook_of_a_customer_journey(self) -> None:
+        correlation_id = self.order_and_deliver({"X-Correlation-ID": "journey-7"})
+        self.assertEqual("journey-7", correlation_id)
+        self.assertEqual("journey-7", self.last_headers["X-Correlation-ID"])
+        self.assertEqual(7, len(FakeRelay.received))
+        for message in FakeRelay.received:
+            self.assertEqual("journey-7", message["x-correlation-id"])
+            self.assertEqual("journey-7", to_event(message, SECRET)["correlation_id"])
+
+    def test_two_customers_never_share_a_correlation_id(self) -> None:
+        first = self.order_and_deliver()
+        second = self.order_and_deliver()
+        self.assertNotEqual(first, second)
+        self.assertEqual({first, second}, {to_event(message, SECRET)["correlation_id"] for message in FakeRelay.received})
+
+    def test_correlation_id_changed_on_the_public_relay_breaks_the_signature(self) -> None:
+        self.order_and_deliver({"X-Correlation-ID": "journey-8"})
+        message = FakeRelay.received[0]
+        forged = {**message, "body": {**message["body"], "correlation_id": "journey-other"}}
+        self.assertFalse(to_event(forged, SECRET)["signature_valid"])
 
     def test_advancing_a_delivered_house_sends_no_webhook(self) -> None:
         _, created = self.post("/api/houses", {"model": "dune", "lot": "Lot D-04", "buyer_alias": "buyer-0004"})

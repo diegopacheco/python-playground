@@ -79,6 +79,11 @@ class SubscriberTest(unittest.TestCase):
         self.subscriber.consume(sse("event: ready\ndata: {}"))
         self.assertTrue(self.subscriber.connected.is_set())
 
+    def test_stored_event_keeps_the_correlation_id_from_the_signed_payload(self) -> None:
+        payload = {**self.payload, "correlation_id": "journey-9"}
+        self.subscriber.consume(sse("data: " + json.dumps(relay_message(payload)) + "\n"))
+        self.assertEqual("journey-9", self.store.all()[0]["correlation_id"])
+
     def test_same_webhook_delivered_twice_is_stored_once(self) -> None:
         frame = "data: " + json.dumps(relay_message(self.payload)) + "\n"
         self.subscriber.consume(sse(frame, frame))

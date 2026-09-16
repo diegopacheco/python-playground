@@ -3,11 +3,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class JsonHandler(BaseHTTPRequestHandler):
-    def send_json(self, status: int, body: object) -> None:
-        self.send_bytes(status, json.dumps(body).encode(), "application/json")
+    def send_json(self, status: int, body: object, headers: dict[str, str] | None = None) -> None:
+        self.send_bytes(status, json.dumps(body).encode(), "application/json", headers)
 
-    def send_bytes(self, status: int, data: bytes, content_type: str) -> None:
+    def send_bytes(self, status: int, data: bytes, content_type: str, headers: dict[str, str] | None = None) -> None:
         self.send_response(status)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()

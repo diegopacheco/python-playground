@@ -3,7 +3,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 
-COLUMNS = ("id", "type", "signature_valid", "relayed_at", "received_at", "headers", "payload")
+COLUMNS = ("id", "correlation_id", "type", "signature_valid", "relayed_at", "received_at", "headers", "payload")
 
 
 class EventStore:
@@ -12,7 +12,7 @@ class EventStore:
         with self._connect() as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS events ("
-                "id TEXT PRIMARY KEY, type TEXT NOT NULL, signature_valid INTEGER NOT NULL, relayed_at TEXT, "
+                "id TEXT PRIMARY KEY, correlation_id TEXT NOT NULL, type TEXT NOT NULL, signature_valid INTEGER NOT NULL, relayed_at TEXT, "
                 "received_at TEXT NOT NULL, headers TEXT NOT NULL, payload TEXT NOT NULL)"
             )
 
@@ -24,9 +24,10 @@ class EventStore:
     def add(self, event: dict) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(
-                f"INSERT OR IGNORE INTO events ({', '.join(COLUMNS)}) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT OR IGNORE INTO events ({', '.join(COLUMNS)}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     event["id"],
+                    event["correlation_id"],
                     event["type"],
                     int(event["signature_valid"]),
                     event["relayed_at"],
@@ -43,12 +44,13 @@ class EventStore:
         return [
             {
                 "id": row[0],
-                "type": row[1],
-                "signature_valid": bool(row[2]),
-                "relayed_at": row[3],
-                "received_at": row[4],
-                "headers": json.loads(row[5]),
-                "payload": json.loads(row[6]),
+                "correlation_id": row[1],
+                "type": row[2],
+                "signature_valid": bool(row[3]),
+                "relayed_at": row[4],
+                "received_at": row[5],
+                "headers": json.loads(row[6]),
+                "payload": json.loads(row[7]),
             }
             for row in rows
         ]

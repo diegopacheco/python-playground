@@ -4,6 +4,7 @@ import urllib.request
 import uuid
 
 from app.config import now_iso
+from app.correlation import HEADER
 from app.signing import canonical, sign
 
 
@@ -13,8 +14,14 @@ class WebhookPublisher:
         self.secret = secret
         self.deliveries: list[dict] = []
 
-    def publish(self, event_type: str, data: dict) -> int:
-        payload = {"id": str(uuid.uuid4()), "type": event_type, "created_at": now_iso(), "data": data}
+    def publish(self, event_type: str, data: dict, correlation_id: str) -> int:
+        payload = {
+            "id": str(uuid.uuid4()),
+            "correlation_id": correlation_id,
+            "type": event_type,
+            "created_at": now_iso(),
+            "data": data,
+        }
         body = canonical(payload).encode()
         timestamp = str(int(time.time()))
         headers = {
@@ -24,6 +31,7 @@ class WebhookPublisher:
             "User-Agent": "prebuilt-houses-webhooks/1.0",
             "Accept-Encoding": "identity",
             "Connection": "close",
+            HEADER: correlation_id,
             "X-Webhook-Event": event_type,
             "X-Webhook-Timestamp": timestamp,
             "X-Webhook-Signature": sign(self.secret, timestamp, payload),
@@ -32,6 +40,12 @@ class WebhookPublisher:
         sent_at = now_iso()
         with urllib.request.urlopen(request, timeout=10) as response:
             self.deliveries.append(
-                {"id": payload["id"], "sent_at": sent_at, "relay_status": response.status, "headers": headers}
+                {
+                    "id": payload["id"],
+                    "correlation_id": correlation_id,
+                    "sent_at": sent_at,
+                    "relay_status": response.status,
+                    "headers": headers,
+                }
             )
             return response.status

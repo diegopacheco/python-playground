@@ -13,7 +13,8 @@ admin UI shows everything the listener got. Pure Python standard library, no thi
    (Server-Sent Events), then the webhook server and the admin UI.
 3. `scripts/generate-synthetical-data.sh` orders random synthetic houses and advances each through some stages.
 4. For every change the webhook server POSTs a JSON event to the public smee.io URL with
-   `X-Webhook-Event`, `X-Webhook-Timestamp` and `X-Webhook-Signature` (HMAC SHA-256).
+   `X-Correlation-ID`, `X-Webhook-Event`, `X-Webhook-Timestamp` and `X-Webhook-Signature` (HMAC SHA-256).
+   The correlation id is created when the house is ordered and reused by every later webhook of that house.
 5. smee.io pushes the event to the listener over its SSE stream.
 6. The listener keeps the body and every header smee.io forwarded (IP, port and channel URL values are
    redacted), recomputes the signature, de-duplicates by event id and writes the event to SQLite.
@@ -48,6 +49,7 @@ admin UI shows everything the listener got. Pure Python standard library, no thi
 | HMAC SHA-256 signature | The smee.io channel is public, so anyone could POST to it. Only events signed with the secret show as valid. |
 | Timestamp in the signature | A captured signature cannot be replayed with another timestamp. |
 | Header redaction | smee.io forwards `client-ip`, `x-forwarded-for`, `x-client-port` and `x-original-url`. Any header whose name looks like ip, forwarded, url, port, origin or referer, and any value that looks like an IP or a smee.io channel, is stored as `[redacted]`, so no IP or channel URL is stored or shown. |
+| Correlation ID | One id per customer journey, from `house.ordered` to `house.delivered`. Sent as `X-Correlation-ID` and inside the signed payload, echoed on the API response, written to the webhook server and listener logs, and shown in the admin UI where a click shows only that journey. |
 | De-duplication | An SSE reconnect cannot store the same event twice. |
 | Loud delivery failures | If the relay is down the server answers `502` instead of a silent success. |
 | Construction lifecycle | `ORDERED -> BUILDING_IN_FACTORY -> SHIPPED -> ARRIVED_ON_SITE -> ASSEMBLED -> INSPECTED -> DELIVERED`, no skipping or going past delivered. |
@@ -73,15 +75,17 @@ Webhook server, http://localhost:8081
 |---|---|---|---|
 | GET | `/api/models` | | catalog of house models |
 | GET | `/api/houses` | | all houses |
-| POST | `/api/houses` | `{"model": "aspen", "lot": "Lot A-01", "buyer_alias": "buyer-0001"}` | `201` house, sends `house.ordered`; `400` invalid; `502` relay down |
+| POST | `/api/houses` | `{"model": "aspen", "lot": "Lot A-01", "buyer_alias": "buyer-0001"}`, optional header `X-Correlation-ID` | `201` house with `correlation_id`, sends `house.ordered`; `400` invalid; `502` relay down |
 | POST | `/api/houses/{id}/advance` | | `200` sends `house.status_changed` or `house.delivered`; `404`; `409` already delivered |
-| GET | `/api/deliveries` | | every webhook sent: event id, `sent_at`, `relay_status` and the exact headers sent |
+| GET | `/api/deliveries` | | every webhook sent: event id, `correlation_id`, `sent_at`, `relay_status` and the exact headers sent |
+
+Every house response carries the `X-Correlation-ID` header of the journey.
 
 Listener, http://localhost:8082
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/api/events` | stored events, newest first, with `relayed_at`, `received_at`, redacted `headers` and `payload` |
+| GET | `/api/events` | stored events, newest first, with `correlation_id`, `relayed_at`, `received_at`, redacted `headers` and `payload` |
 | GET | `/health` | `{"status": "UP", "relay_connected": true}` |
 
 Admin UI, http://localhost:8083 serves the page, proxies `/api/events` and `/health` to the listener and
@@ -91,6 +95,7 @@ Webhook sent to the relay:
 
 ```
 POST https://smee.io/<random channel>
+X-Correlation-ID: 8c1f0b7e-2d4a-4f5e-9b1c-3a6d7e8f9012
 X-Webhook-Event: house.delivered
 X-Webhook-Timestamp: 1789000000
 X-Webhook-Signature: sha256=hex(hmac_sha256(secret, "<timestamp>.<canonical json body>"))
@@ -99,12 +104,14 @@ X-Webhook-Signature: sha256=hex(hmac_sha256(secret, "<timestamp>.<canonical json
 ```json
 {
   "id": "06d61902-edb7-479a-b2a6-3ec3c1d48a23",
+  "correlation_id": "8c1f0b7e-2d4a-4f5e-9b1c-3a6d7e8f9012",
   "type": "house.delivered",
   "created_at": "2026-09-16T16:20:46.512+00:00",
   "data": {
     "previous_status": "INSPECTED",
     "house": {
       "id": "3fb68249-bf0f-4297-8042-6022f1d9ca27",
+      "correlation_id": "8c1f0b7e-2d4a-4f5e-9b1c-3a6d7e8f9012",
       "model": "cedar",
       "model_details": {"name": "Cedar 4BR Two Story", "bedrooms": 4, "sqft": 2100, "price_usd": 348000},
       "lot": "Lot F-09",
@@ -121,6 +128,10 @@ X-Webhook-Signature: sha256=hex(hmac_sha256(secret, "<timestamp>.<canonical json
 * The signature is computed over canonical JSON (sorted keys, no spaces). smee.io parses and
   re-serializes the body, so signing the raw bytes would break; the listener re-canonicalizes and compares
   with `hmac.compare_digest`. Payloads use integers only so number formatting cannot differ.
+* The correlation id belongs to the house, not to a single request: it is born on the order, from the
+  caller `X-Correlation-ID` when it is 1-64 of `A-Z a-z 0-9 . _ -`, otherwise a new UUID, so an unsafe value
+  cannot reach headers or logs. The listener reads it from the signed payload, not from the header, so it
+  cannot be changed on the public relay without breaking the signature.
 * The listener stores events with signature `rejected` instead of dropping them, so forged traffic on the
   public channel is visible in the admin UI.
 * The listener starts first and `start-all.sh` waits for the relay `ready` event, because smee.io does
@@ -129,7 +140,7 @@ X-Webhook-Signature: sha256=hex(hmac_sha256(secret, "<timestamp>.<canonical json
 * The channel URL and secret are never printed, logged or shown in the UI. Anyone with the channel URL
   can read the stream, which is fine only because every payload is synthetic.
 * Layout: `app/houses.py` domain, `app/publisher.py` sends, `app/subscriber.py` receives,
-  `app/event_store.py` SQL, `app/private_headers.py` redaction, `app/signing.py` shared by both sides,
+  `app/event_store.py` SQL, `app/private_headers.py` redaction, `app/correlation.py` correlation id, `app/signing.py` shared by both sides,
   one small HTTP entry point per component.
 
 ## Privacy

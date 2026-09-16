@@ -29,8 +29,10 @@ while [ "$i" -le "$HOUSES" ]; do
   lot="$(printf 'Lot %s-%02d' "$(printf '%s' ABCDEF | cut -c $((RANDOM % 6 + 1)))" $((RANDOM % 40 + 1)))"
   alias="$(printf 'buyer-%04d' $((RANDOM % 10000)))"
   body="$(printf '{"model":"%s","lot":"%s","buyer_alias":"%s"}' "$model" "$lot" "$alias")"
-  house_id="$(post /api/houses "$body" | json_field '["house"]["id"]')"
-  log "house $i/$HOUSES $model $lot ordered"
+  created="$(post /api/houses "$body")"
+  house_id="$(printf '%s' "$created" | json_field '["house"]["id"]')"
+  correlation_id="$(printf '%s' "$created" | json_field '["house"]["correlation_id"]')"
+  log "house $i/$HOUSES $model $lot ordered correlation_id=$correlation_id"
   steps=$((RANDOM % 6 + 1))
   s=1
   while [ "$s" -le "$steps" ]; do

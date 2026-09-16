@@ -33,6 +33,11 @@
   .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
   .filters .to { color: var(--accent); font-weight: 700; }
   .filters .gap { width: 12px; }
+  .filters button.journey { background: #fff7ed; border-color: var(--accent); color: var(--accent); }
+  .corr { font-family: ui-monospace, Menlo, monospace; color: #1d4ed8; border-bottom: 1px dashed #1d4ed8; cursor: pointer; }
+  .corr:hover { color: var(--accent); border-color: var(--accent); }
+  .corr-line { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+  .corr-line code { font-family: ui-monospace, Menlo, monospace; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
   .filters button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; }
   .filters button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .table { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
@@ -92,14 +97,14 @@
   <nav class="filters" id="filters"></nav>
   <div class="table">
     <table>
-      <thead><tr><th>Received</th><th>Event</th><th>Signature</th><th>House</th><th>Model</th><th>Lot</th><th>Status</th></tr></thead>
+      <thead><tr><th>Received</th><th>Correlation ID</th><th>Event</th><th>Signature</th><th>House</th><th>Model</th><th>Lot</th><th>Status</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
     <div class="empty" id="empty">No webhooks received yet. Run ./scripts/generate-synthetical-data.sh</div>
   </div>
 </main>
 <script>
-  const state = { events: [], deliveries: {}, filter: "all", open: new Set(), openPanels: new Set() };
+  const state = { events: [], deliveries: {}, filter: "all", correlation: null, open: new Set(), openPanels: new Set() };
 
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -192,14 +197,16 @@
   const details = (event) => {
     const delivery = state.deliveries[event.id];
     const td = element("td", "detail");
-    td.colSpan = 7;
+    td.colSpan = 8;
+    const line = element("p", "corr-line", "Correlation ID ");
+    line.appendChild(element("code", "", event.correlation_id || "none"));
     const panels = element("div", "panels");
     panels.append(
       panel(`${event.id}:out`, "Out headers", ["Webhook Server", "smee.io"], "headers", delivery && delivery.headers),
       panel(`${event.id}:in`, "In headers", ["smee.io", "Webhook Listener"], "headers", event.headers),
       panel(`${event.id}:payload`, "Payload", ["Webhook Server", "smee.io", "Webhook Listener"], "fields", event.payload),
     );
-    td.append(flow(event, delivery), panels);
+    td.append(line, flow(event, delivery), panels);
     return td;
   };
 
@@ -220,9 +227,27 @@
     ["house.delivered", "delivered"],
   ];
 
+  const inJourney = () => state.events.filter((event) => !state.correlation || event.correlation_id === state.correlation);
+
+  const toggleJourney = (correlationId) => {
+    state.correlation = state.correlation === correlationId ? null : correlationId;
+    render();
+  };
+
+  const correlationCell = (event) => {
+    const td = document.createElement("td");
+    if (!event.correlation_id) return cell("-");
+    const link = element("span", "corr", event.correlation_id.slice(0, 8));
+    link.title = `${event.correlation_id}, click to show only this customer journey`;
+    link.onclick = (click) => { click.stopPropagation(); toggleJourney(event.correlation_id); };
+    td.appendChild(link);
+    return td;
+  };
+
   const filterButton = (type, label) => {
     const button = element("button", type === state.filter ? "active" : "");
-    const count = type === "all" ? state.events.length : state.events.filter((event) => event.type === type).length;
+    const scoped = inJourney();
+    const count = type === "all" ? scoped.length : scoped.filter((event) => event.type === type).length;
     button.textContent = `${label} (${count})`;
     button.onclick = () => { state.filter = type; render(); };
     return button;
@@ -237,11 +262,17 @@
       chips.push(filterButton(type, label));
     });
     others.forEach((type) => chips.push(element("span", "gap"), filterButton(type, type)));
+    if (state.correlation) {
+      const journey = element("button", "journey", `correlation ${state.correlation.slice(0, 8)} \u2715`);
+      journey.title = "show every customer again";
+      journey.onclick = () => toggleJourney(state.correlation);
+      chips.push(element("span", "gap"), journey);
+    }
     document.getElementById("filters").replaceChildren(...chips);
   };
 
   const renderRows = () => {
-    const visible = state.events.filter((event) => state.filter === "all" || event.type === state.filter);
+    const visible = inJourney().filter((event) => state.filter === "all" || event.type === state.filter);
     const rows = [];
     visible.forEach((event) => {
       const house = houseOf(event);
@@ -249,6 +280,7 @@
       tr.className = "event";
       tr.append(
         cell(new Date(event.received_at).toLocaleTimeString()),
+        correlationCell(event),
         cell(event.type, "type"),
         cell(event.signature_valid ? "valid" : "rejected", event.signature_valid ? "badge ok" : "badge bad"),
         cell((house.id || "-").slice(0, 8)),

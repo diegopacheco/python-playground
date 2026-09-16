@@ -35,6 +35,7 @@ def to_event(message: dict, secret: str) -> dict | None:
     webhook = {name: message.get(name) for name in WEBHOOK_HEADERS}
     return {
         "id": str(body.get("id") or uuid.uuid4()),
+        "correlation_id": str(body.get("correlation_id") or ""),
         "type": str(webhook["x-webhook-event"] or "unknown"),
         "signature_valid": verify(secret, webhook["x-webhook-timestamp"], body, webhook["x-webhook-signature"]),
         "relayed_at": relayed_at(message.get("timestamp")),
@@ -65,7 +66,11 @@ class RelaySubscriber:
             elif event == "message":
                 record = to_event(json.loads(data), self.secret)
                 if record and self.store.add(record):
-                    print(f"received {record['type']} valid={record['signature_valid']}", flush=True)
+                    print(
+                        f"received {record['type']} correlation_id={record['correlation_id']} "
+                        f"valid={record['signature_valid']}",
+                        flush=True,
+                    )
 
     def run_forever(self) -> None:
         request = urllib.request.Request(self.relay_url, headers={"Accept": "text/event-stream"})

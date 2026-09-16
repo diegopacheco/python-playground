@@ -2,6 +2,7 @@ import re
 import urllib.error
 
 from app.config import required
+from app.correlation import HEADER, correlation_id_from
 from app.houses import MODELS, STAGES, HouseNotFound, HouseStore, InvalidTransition
 from app.http_json import JsonHandler, serve
 from app.publisher import WebhookPublisher
@@ -37,7 +38,12 @@ def make_handler(store: HouseStore, publisher: WebhookPublisher) -> type[JsonHan
         def create_house(self) -> None:
             body = self.read_json()
             try:
-                house = store.create(body.get("model", ""), body.get("lot", ""), body.get("buyer_alias", ""))
+                house = store.create(
+                    body.get("model", ""),
+                    body.get("lot", ""),
+                    body.get("buyer_alias", ""),
+                    correlation_id_from(self.headers.get(HEADER)),
+                )
             except ValueError as error:
                 return self.send_json(400, {"error": str(error)})
             data = {"house": house}
@@ -54,11 +60,15 @@ def make_handler(store: HouseStore, publisher: WebhookPublisher) -> type[JsonHan
             self.deliver(200, event_type_for(house["status"]), data, data)
 
         def deliver(self, status: int, event_type: str, data: dict, response: dict) -> None:
+            correlation_id = data["house"]["correlation_id"]
+            echo = {HEADER: correlation_id}
             try:
-                webhook_status = publisher.publish(event_type, data)
+                webhook_status = publisher.publish(event_type, data, correlation_id)
             except (urllib.error.URLError, TimeoutError) as error:
-                return self.send_json(502, {**response, "error": f"webhook delivery failed: {error}"})
-            self.send_json(status, {**response, "event": event_type, "webhook_status": webhook_status})
+                print(f"failed {event_type} correlation_id={correlation_id}", flush=True)
+                return self.send_json(502, {**response, "error": f"webhook delivery failed: {error}"}, echo)
+            print(f"sent {event_type} correlation_id={correlation_id} relay_status={webhook_status}", flush=True)
+            self.send_json(status, {**response, "event": event_type, "webhook_status": webhook_status}, echo)
 
     return Handler
 

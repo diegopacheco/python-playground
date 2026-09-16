@@ -34,13 +34,14 @@ class HouseStore:
         self._houses: dict[str, dict] = {}
         self._lock = threading.Lock()
 
-    def create(self, model: str, lot: str, buyer_alias: str) -> dict:
+    def create(self, model: str, lot: str, buyer_alias: str, correlation_id: str) -> dict:
         if model not in MODELS:
             raise ValueError(f"model must be one of {sorted(MODELS)}")
         if not lot or not buyer_alias:
             raise ValueError("lot and buyer_alias are required")
         house = {
             "id": str(uuid.uuid4()),
+            "correlation_id": correlation_id,
             "model": model,
             "model_details": MODELS[model],
             "lot": lot,
