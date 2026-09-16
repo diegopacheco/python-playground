@@ -1,0 +1,77 @@
+web-hook-svr-client-poc/README.md
+  s_79113d3e734da6::t_467602426e0f5a 4,62
+  s_79113d3e734da6::t_95be85917b17ca 24-37
+  s_79113d3e734da6::t_7ee43120dc104f 12,63,128
+  s_79113d3e734da6::t_2ac8bef9772465 14,172,179
+  s_79113d3e734da6::t_f6e3881ae79ae6 18-22,50,78,84,87-88,103,113,132-133,138-140
+  s_79113d3e734da6::t_91a6e31ab01e32 54
+  s_79113d3e734da6::t_a9d0b3c7b82a58 23
+web-hook-svr-client-poc/scripts/start-all.sh
+  s_79113d3e734da6::t_f5986260cfab49 11-15
+web-hook-svr-client-poc/app/webhook_server.py
+  s_79113d3e734da6::t_3fd4d27e29eed8 25-26
+  s_79113d3e734da6::t_a51b2efe2b219f 18,29,37,46,56,66
+web-hook-svr-client-poc/tests/test_webhook_flow.py
+  s_79113d3e734da6::t_0ee70c7853ccb1 41-42,78-86,88-92
+  s_79113d3e734da6::t_a51b2efe2b219f 19,26,30,37,45,61,77,87,94,102,107
+  s_79113d3e734da6::t_7141fc1f83933e 93
+web-hook-svr-client-poc/tests/test_subscriber.py
+  s_79113d3e734da6::t_a51b2efe2b219f 36,42,45,49,54,61,65,68,71,74,78,82
+  s_79113d3e734da6::t_0ee70c7853ccb1 15,18-20,26-27,50-53,55-60,62-64,86
+web-hook-svr-client-poc/tests/test_houses.py
+  s_79113d3e734da6::t_a51b2efe2b219f 8,11,16,24,31,35,39,43
+web-hook-svr-client-poc/tests/test_signing.py
+  s_79113d3e734da6::t_a51b2efe2b219f 11,15,19,23,28,32
+web-hook-svr-client-poc/scripts/generate-synthetical-data.sh
+  s_79113d3e734da6::t_2ac8bef9772465 1-44
+web-hook-svr-client-poc/app/static/index.html
+  s_79113d3e734da6::t_86a72d9b849547 28
+  s_79113d3e734da6::t_cad48f1ae2547e 57-61,66,102,152-155,157-158
+  s_79113d3e734da6::t_3958ced5cd9ab2 62-65,141-151,156,198-200
+  s_79113d3e734da6::t_287b47a8d9be8f 67-68,70
+  s_79113d3e734da6::t_2ac8bef9772465 98
+  s_79113d3e734da6::t_78debb258ab1bf 48-56,69,71-76,104-140,159-197,201-204,263,283,286,289
+  s_79113d3e734da6::t_9c06f835a2b0c0 33-35,217-230,232-240
+  s_79113d3e734da6::t_abc10fd1969a3c 103
+web-hook-svr-client-poc/app/publisher.py
+  s_79113d3e734da6::t_3fd4d27e29eed8 2,14,18,21,23,25-26,31-32,34-36
+  s_79113d3e734da6::t_a51b2efe2b219f 11
+web-hook-svr-client-poc/app/admin_ui.py
+  s_79113d3e734da6::t_a51b2efe2b219f 15,22,32
+  s_79113d3e734da6::t_f80b11c5f045be 11-13,18-19,24,27,34-35
+web-hook-svr-client-poc/app/subscriber.py
+  s_79113d3e734da6::t_a51b2efe2b219f 47,54
+  s_79113d3e734da6::t_9b0e31f5f86f7a 11
+  s_79113d3e734da6::t_3fd4d27e29eed8 7,14,35,38-40,42,48-50
+  s_79113d3e734da6::t_98940238674b69 51-52
+web-hook-svr-client-poc/app/event_store.py
+  s_79113d3e734da6::t_f80b11c5f045be 6,15-16,27-36,42,44-52
+  s_79113d3e734da6::t_a51b2efe2b219f 3-4,10,19-22
+  s_79113d3e734da6::t_6c02af00e6c544 5
+web-hook-svr-client-poc/app/houses.py
+  s_79113d3e734da6::t_a51b2efe2b219f 33
+web-hook-svr-client-poc/app/listener.py
+  s_79113d3e734da6::t_a51b2efe2b219f 9,19
+web-hook-svr-client-poc/app/config.py
+  s_79113d3e734da6::t_3fd4d27e29eed8 13
+web-hook-svr-client-poc/app/http_json.py
+  s_79113d3e734da6::t_a51b2efe2b219f 6,24
+web-hook-svr-client-poc/app/private_headers.py
+  s_79113d3e734da6::t_9b0e31f5f86f7a 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "df1d955adf49bfe56c3514514eb751fc13f5a607",
+  "prompts": {},
+  "sessions": {
+    "s_79113d3e734da6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3302923-3f5f-4964-a236-acd1a94a15d3",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
