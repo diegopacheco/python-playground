@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 HOUSES="${1:-5}"
 MODELS="aspen birch cedar dune"
 SERVER="http://localhost:$(service_port webhook_server)"
 
 case "$HOUSES" in
-  ''|*[!0-9]*) fail "usage: ./generate-synthetical-data.sh [number_of_houses]" ;;
+  ''|*[!0-9]*) fail "usage: ./scripts/generate-synthetical-data.sh [number_of_houses]" ;;
 esac
 
 port_up "$(service_port webhook_server)" || fail "webhook_server is down, run ./scripts/start-all.sh first"

@@ -15,16 +15,18 @@ def event_type_for(status: str) -> str:
 
 def make_handler(store: HouseStore, publisher: WebhookPublisher) -> type[JsonHandler]:
     class Handler(JsonHandler):
-        def do_GET(self):
+        def do_GET(self) -> None:
             if self.path == "/health":
                 return self.send_json(200, {"status": "UP"})
             if self.path == "/api/models":
                 return self.send_json(200, MODELS)
             if self.path == "/api/houses":
                 return self.send_json(200, store.all())
+            if self.path == "/api/deliveries":
+                return self.send_json(200, publisher.deliveries)
             self.send_json(404, {"error": "not found"})
 
-        def do_POST(self):
+        def do_POST(self) -> None:
             if self.path == "/api/houses":
                 return self.create_house()
             match = ADVANCE_PATH.fullmatch(self.path)
@@ -32,7 +34,7 @@ def make_handler(store: HouseStore, publisher: WebhookPublisher) -> type[JsonHan
                 return self.advance_house(match.group(1))
             self.send_json(404, {"error": "not found"})
 
-        def create_house(self):
+        def create_house(self) -> None:
             body = self.read_json()
             try:
                 house = store.create(body.get("model", ""), body.get("lot", ""), body.get("buyer_alias", ""))
@@ -41,7 +43,7 @@ def make_handler(store: HouseStore, publisher: WebhookPublisher) -> type[JsonHan
             data = {"house": house}
             self.deliver(201, "house.ordered", data, data)
 
-        def advance_house(self, house_id: str):
+        def advance_house(self, house_id: str) -> None:
             try:
                 previous, house = store.advance(house_id)
             except HouseNotFound:
@@ -51,7 +53,7 @@ def make_handler(store: HouseStore, publisher: WebhookPublisher) -> type[JsonHan
             data = {"house": house, "previous_status": previous}
             self.deliver(200, event_type_for(house["status"]), data, data)
 
-        def deliver(self, status: int, event_type: str, data: dict, response: dict):
+        def deliver(self, status: int, event_type: str, data: dict, response: dict) -> None:
             try:
                 webhook_status = publisher.publish(event_type, data)
             except (urllib.error.URLError, TimeoutError) as error:
@@ -61,7 +63,7 @@ def make_handler(store: HouseStore, publisher: WebhookPublisher) -> type[JsonHan
     return Handler
 
 
-def main():
+def main() -> None:
     publisher = WebhookPublisher(required("RELAY_URL"), required("WEBHOOK_SECRET"))
     serve(int(required("WEBHOOK_SERVER_PORT")), make_handler(HouseStore(), publisher))
 

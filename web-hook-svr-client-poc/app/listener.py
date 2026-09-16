@@ -6,7 +6,7 @@ from app.subscriber import RelaySubscriber
 
 def make_handler(store: EventStore, subscriber: RelaySubscriber) -> type[JsonHandler]:
     class Handler(JsonHandler):
-        def do_GET(self):
+        def do_GET(self) -> None:
             if self.path == "/health":
                 return self.send_json(200, {"status": "UP", "relay_connected": subscriber.connected.is_set()})
             if self.path == "/api/events":
@@ -16,7 +16,7 @@ def make_handler(store: EventStore, subscriber: RelaySubscriber) -> type[JsonHan
     return Handler
 
 
-def main():
+def main() -> None:
     store = EventStore(required("LISTENER_DB"))
     subscriber = RelaySubscriber(required("RELAY_URL"), required("WEBHOOK_SECRET"), store)
     subscriber.start()

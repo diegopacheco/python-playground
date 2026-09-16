@@ -30,7 +30,7 @@ class InvalidTransition(Exception):
 
 
 class HouseStore:
-    def __init__(self):
+    def __init__(self) -> None:
         self._houses: dict[str, dict] = {}
         self._lock = threading.Lock()
 

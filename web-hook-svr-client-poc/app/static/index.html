@@ -25,12 +25,14 @@
   .relay { font-size: 13px; color: var(--muted); }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--bad); }
   .dot.on { background: var(--ok); }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px; }
+  main { max-width: 1680px; margin: 0 auto; padding: 20px 16px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
   .stat b { display: block; font-size: 24px; }
   .stat small { color: var(--muted); }
-  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .filters .to { color: var(--accent); font-weight: 700; }
+  .filters .gap { width: 12px; }
   .filters button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; }
   .filters button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .table { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
@@ -43,7 +45,35 @@
   .badge.ok { color: var(--ok); background: var(--ok-bg); }
   .badge.bad { color: var(--bad); background: var(--bad-bg); }
   .type { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
-  pre { margin: 0; padding: 12px; background: #fbfaf7; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  td.detail { white-space: normal; background: #fbfaf7; padding: 16px; }
+  .flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .node { flex: 1 1 200px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .node b { display: block; font-size: 14px; }
+  .node small { display: block; color: var(--muted); font-size: 12px; }
+  .node.ok { border-color: var(--ok); box-shadow: inset 4px 0 0 var(--ok); }
+  .node.bad { border-color: var(--bad); box-shadow: inset 4px 0 0 var(--bad); }
+  .arrow { display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--accent); font-size: 12px; min-width: 70px; }
+  .arrow span { font-size: 22px; line-height: 1; }
+  .panels { display: grid; gap: 10px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  .panel summary { cursor: pointer; padding: 10px 14px; display: flex; justify-content: space-between; gap: 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .panel summary:hover { color: var(--ink); }
+  .panel summary .count { color: var(--accent); text-transform: none; letter-spacing: 0; }
+  .hops { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; text-transform: none; letter-spacing: 0; font-size: 13px; }
+  .hops .what { color: var(--ink); margin-right: 6px; }
+  .hop { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; color: var(--ink); font-weight: 500; }
+  .hops .to { color: var(--accent); font-weight: 700; }
+  .panel .code { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; }
+  .code { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; font: 13px/1.7 ui-monospace, Menlo, monospace; overflow-x: auto; padding: 10px 0; }
+  .line { display: flex; width: max-content; min-width: 100%; }
+  .ln { flex: 0 0 44px; padding-right: 12px; text-align: right; color: #a8a29e; user-select: none; }
+  .src { white-space: pre; padding-right: 16px; }
+  .j-key { color: #1d4ed8; }
+  .j-str { color: #15803d; }
+  .j-num { color: #c2410c; }
+  .j-lit { color: #9333ea; }
+  .j-punct { color: #6b7280; }
+  .none { color: var(--muted); font-style: italic; padding: 8px 12px; }
   .empty { padding: 32px; text-align: center; color: var(--muted); }
 </style>
 </head>
@@ -65,11 +95,113 @@
       <thead><tr><th>Received</th><th>Event</th><th>Signature</th><th>House</th><th>Model</th><th>Lot</th><th>Status</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
-    <div class="empty" id="empty">No webhooks received yet. Run ./generate-synthetical-data.sh</div>
+    <div class="empty" id="empty">No webhooks received yet. Run ./scripts/generate-synthetical-data.sh</div>
   </div>
 </main>
 <script>
-  const state = { events: [], filter: "all", open: new Set() };
+  const state = { events: [], deliveries: {}, filter: "all", open: new Set(), openPanels: new Set() };
+
+  const element = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}\[\],:])/g;
+
+  const highlight = (text) => {
+    const nodes = [];
+    let last = 0;
+    for (const match of text.matchAll(JSON_TOKEN)) {
+      if (match.index > last) nodes.push(document.createTextNode(text.slice(last, match.index)));
+      if (match[1] && match[2]) nodes.push(element("span", "j-key", match[1]), element("span", "j-punct", match[2]));
+      else if (match[1]) nodes.push(element("span", "j-str", match[1]));
+      else if (match[3]) nodes.push(element("span", "j-lit", match[3]));
+      else if (match[4]) nodes.push(element("span", "j-num", match[4]));
+      else nodes.push(element("span", "j-punct", match[5]));
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) nodes.push(document.createTextNode(text.slice(last)));
+    return nodes;
+  };
+
+  const codeBlock = (value) => {
+    const block = element("div", "code");
+    JSON.stringify(value, null, 2).split("\n").forEach((text, index) => {
+      const line = element("div", "line");
+      const src = element("span", "src");
+      src.append(...highlight(text));
+      line.append(element("span", "ln", index + 1), src);
+      block.appendChild(line);
+    });
+    return block;
+  };
+
+  const hops = (what, path) => {
+    const label = element("span", "hops");
+    label.appendChild(element("span", "what", what));
+    path.forEach((name, index) => {
+      if (index) label.appendChild(element("span", "to", "\u2192"));
+      label.appendChild(element("span", "hop", name));
+    });
+    return label;
+  };
+
+  const panel = (key, what, path, unit, value) => {
+    const section = element("details", "panel");
+    section.open = state.openPanels.has(key);
+    section.ontoggle = () => { section.open ? state.openPanels.add(key) : state.openPanels.delete(key); };
+    const summary = element("summary");
+    summary.append(hops(what, path), element("span", "count", value ? `${Object.keys(value).length} ${unit}` : "none"));
+    section.appendChild(summary);
+    if (value) section.appendChild(codeBlock(value));
+    return section;
+  };
+
+  const time = (iso) => (iso ? new Date(iso).toISOString().slice(11, 23) : "-");
+
+  const gap = (from, to) => (from && to ? `${new Date(to) - new Date(from)} ms` : "");
+
+  const node = (title, subtitle, lines, status) => {
+    const box = element("div", `node ${status}`);
+    box.append(element("b", "", title), element("small", "", subtitle), ...lines.map((text) => element("small", "", text)));
+    return box;
+  };
+
+  const arrow = (label) => {
+    const box = element("div", "arrow");
+    box.append(element("span", "", "\u2192"), element("div", "", label));
+    return box;
+  };
+
+  const flow = (event, delivery) => {
+    const box = element("div", "flow");
+    box.append(
+      delivery
+        ? node("Webhook Server", "localhost:8081", [`sent ${time(delivery.sent_at)} UTC`, `relay answered HTTP ${delivery.relay_status}`], "ok")
+        : node("Webhook Server", "localhost:8081", ["no record of sending this event", "forged or sent before a restart"], "bad"),
+      arrow(gap(delivery && delivery.sent_at, event.relayed_at) || "POST"),
+      node("smee.io", "public relay", [`relayed ${time(event.relayed_at)} UTC`, "pushed over SSE"], event.relayed_at ? "ok" : "bad"),
+      arrow(gap(event.relayed_at, event.received_at) || "SSE"),
+      node("Webhook Listener", "localhost:8082", [`received ${time(event.received_at)} UTC`, `signature ${event.signature_valid ? "valid" : "rejected"}`], event.signature_valid ? "ok" : "bad"),
+    );
+    return box;
+  };
+
+  const details = (event) => {
+    const delivery = state.deliveries[event.id];
+    const td = element("td", "detail");
+    td.colSpan = 7;
+    const panels = element("div", "panels");
+    panels.append(
+      panel(`${event.id}:out`, "Out headers", ["Webhook Server", "smee.io"], "headers", delivery && delivery.headers),
+      panel(`${event.id}:in`, "In headers", ["smee.io", "Webhook Listener"], "headers", event.headers),
+      panel(`${event.id}:payload`, "Payload", ["Webhook Server", "smee.io", "Webhook Listener"], "fields", event.payload),
+    );
+    td.append(flow(event, delivery), panels);
+    return td;
+  };
 
   const cell = (text, className) => {
     const td = document.createElement("td");
@@ -82,17 +214,30 @@
 
   const houseOf = (event) => (event.payload.data && event.payload.data.house) || {};
 
+  const LIFECYCLE = [
+    ["house.ordered", "ordered"],
+    ["house.status_changed", "in progress"],
+    ["house.delivered", "delivered"],
+  ];
+
+  const filterButton = (type, label) => {
+    const button = element("button", type === state.filter ? "active" : "");
+    const count = type === "all" ? state.events.length : state.events.filter((event) => event.type === type).length;
+    button.textContent = `${label} (${count})`;
+    button.onclick = () => { state.filter = type; render(); };
+    return button;
+  };
+
   const renderFilters = () => {
-    const types = ["all", ...new Set(state.events.map((event) => event.type))];
-    const nav = document.getElementById("filters");
-    nav.replaceChildren(...types.map((type) => {
-      const button = document.createElement("button");
-      const count = type === "all" ? state.events.length : state.events.filter((event) => event.type === type).length;
-      button.textContent = `${type} (${count})`;
-      button.className = type === state.filter ? "active" : "";
-      button.onclick = () => { state.filter = type; render(); };
-      return button;
-    }));
+    const known = LIFECYCLE.map(([type]) => type);
+    const others = [...new Set(state.events.map((event) => event.type))].filter((type) => !known.includes(type));
+    const chips = [filterButton("all", "all"), element("span", "gap")];
+    LIFECYCLE.forEach(([type, label], index) => {
+      if (index) chips.push(element("span", "to", "\u2192"));
+      chips.push(filterButton(type, label));
+    });
+    others.forEach((type) => chips.push(element("span", "gap"), filterButton(type, type)));
+    document.getElementById("filters").replaceChildren(...chips);
   };
 
   const renderRows = () => {
@@ -115,12 +260,7 @@
       rows.push(tr);
       if (state.open.has(event.id)) {
         const detail = document.createElement("tr");
-        const td = document.createElement("td");
-        td.colSpan = 7;
-        const pre = document.createElement("pre");
-        pre.textContent = JSON.stringify(event.payload, null, 2);
-        td.appendChild(pre);
-        detail.appendChild(td);
+        detail.appendChild(details(event));
         rows.push(detail);
       }
     });
@@ -140,11 +280,13 @@
 
   const refresh = async () => {
     try {
-      const [events, health] = await Promise.all([
+      const [events, health, deliveries] = await Promise.all([
         fetch("/api/events").then((response) => response.json()),
         fetch("/health").then((response) => response.json()),
+        fetch("/api/deliveries").then((response) => response.json()).catch(() => []),
       ]);
       state.events = Array.isArray(events) ? events : [];
+      state.deliveries = Object.fromEntries((Array.isArray(deliveries) ? deliveries : []).map((delivery) => [delivery.id, delivery]));
       document.getElementById("dot").className = health.relay_connected ? "dot on" : "dot";
       document.getElementById("relay").textContent = health.relay_connected ? "listener connected to public relay" : "listener not connected to relay";
       render();

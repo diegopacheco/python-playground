@@ -8,6 +8,11 @@ export LISTENER_DB="$DATA/listener.db"
 
 log "starting"
 
+if ! port_up "$LISTENER_PORT"; then
+  rm -f "$LISTENER_DB"
+  log "listener data cleared, the admin UI starts empty"
+fi
+
 start_bg listener python3 -m app.listener
 wait_port_up "$LISTENER_PORT" 60 || fail "listener did not open port $LISTENER_PORT, see .run/logs/listener.log"
 wait_listener_connected || fail "listener could not connect to the public relay, see .run/logs/listener.log"

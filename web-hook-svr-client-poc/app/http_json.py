@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class JsonHandler(BaseHTTPRequestHandler):
-    def send_json(self, status: int, body) -> None:
+    def send_json(self, status: int, body: object) -> None:
         self.send_bytes(status, json.dumps(body).encode(), "application/json")
 
     def send_bytes(self, status: int, data: bytes, content_type: str) -> None:
@@ -21,7 +21,7 @@ class JsonHandler(BaseHTTPRequestHandler):
             return {}
         return body if isinstance(body, dict) else {}
 
-    def log_message(self, format, *args):
+    def log_message(self, format: str, *args: object) -> None:
         print(format % args, flush=True)
 
 
