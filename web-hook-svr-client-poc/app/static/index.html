@@ -33,11 +33,11 @@
   .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
   .filters .to { color: var(--accent); font-weight: 700; }
   .filters .gap { width: 12px; }
-  .filters button.journey { background: #fff7ed; border-color: var(--accent); color: var(--accent); }
-  .corr { font-family: ui-monospace, Menlo, monospace; color: #1d4ed8; border-bottom: 1px dashed #1d4ed8; cursor: pointer; }
-  .corr:hover { color: var(--accent); border-color: var(--accent); }
+  .filters button.journey { background: var(--pastel); border-color: var(--pastel-edge); color: var(--pastel-ink); font-weight: 600; }
+  .corr { font-family: ui-monospace, Menlo, monospace; background: var(--pastel); color: var(--pastel-ink); border: 1px solid var(--pastel-edge); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
+  .corr:hover { filter: saturate(1.6); }
   .corr-line { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
-  .corr-line code { font-family: ui-monospace, Menlo, monospace; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+  .corr-line code { font-family: ui-monospace, Menlo, monospace; color: var(--pastel-ink, var(--ink)); background: var(--pastel, var(--card)); border: 1px solid var(--pastel-edge, var(--line)); border-radius: 6px; padding: 2px 8px; }
   .filters button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; }
   .filters button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
   .table { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
@@ -104,7 +104,26 @@
   </div>
 </main>
 <script>
-  const state = { events: [], deliveries: {}, filter: "all", correlation: null, open: new Set(), openPanels: new Set() };
+  const state = { events: [], deliveries: {}, filter: "all", correlation: null, open: new Set(), openPanels: new Set(), hues: new Map() };
+
+  const GOLDEN_ANGLE = 137.508;
+
+  const assignHues = () => {
+    [...state.events].reverse().forEach((event) => {
+      if (event.correlation_id && !state.hues.has(event.correlation_id)) {
+        state.hues.set(event.correlation_id, (state.hues.size * GOLDEN_ANGLE) % 360);
+      }
+    });
+  };
+
+  const paint = (node, correlationId) => {
+    const hue = state.hues.get(correlationId);
+    if (hue === undefined) return node;
+    node.style.setProperty("--pastel", `hsl(${hue} 85% 92%)`);
+    node.style.setProperty("--pastel-edge", `hsl(${hue} 55% 78%)`);
+    node.style.setProperty("--pastel-ink", `hsl(${hue} 60% 28%)`);
+    return node;
+  };
 
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -199,7 +218,7 @@
     const td = element("td", "detail");
     td.colSpan = 8;
     const line = element("p", "corr-line", "Correlation ID ");
-    line.appendChild(element("code", "", event.correlation_id || "none"));
+    line.appendChild(paint(element("code", "", event.correlation_id || "none"), event.correlation_id));
     const panels = element("div", "panels");
     panels.append(
       panel(`${event.id}:out`, "Out headers", ["Webhook Server", "smee.io"], "headers", delivery && delivery.headers),
@@ -237,7 +256,7 @@
   const correlationCell = (event) => {
     const td = document.createElement("td");
     if (!event.correlation_id) return cell("-");
-    const link = element("span", "corr", event.correlation_id.slice(0, 8));
+    const link = paint(element("span", "corr", event.correlation_id.slice(0, 8)), event.correlation_id);
     link.title = `${event.correlation_id}, click to show only this customer journey`;
     link.onclick = (click) => { click.stopPropagation(); toggleJourney(event.correlation_id); };
     td.appendChild(link);
@@ -263,7 +282,7 @@
     });
     others.forEach((type) => chips.push(element("span", "gap"), filterButton(type, type)));
     if (state.correlation) {
-      const journey = element("button", "journey", `correlation ${state.correlation.slice(0, 8)} \u2715`);
+      const journey = paint(element("button", "journey", `correlation ${state.correlation.slice(0, 8)} \u2715`), state.correlation);
       journey.title = "show every customer again";
       journey.onclick = () => toggleJourney(state.correlation);
       chips.push(element("span", "gap"), journey);
@@ -318,6 +337,7 @@
         fetch("/api/deliveries").then((response) => response.json()).catch(() => []),
       ]);
       state.events = Array.isArray(events) ? events : [];
+      assignHues();
       state.deliveries = Object.fromEntries((Array.isArray(deliveries) ? deliveries : []).map((delivery) => [delivery.id, delivery]));
       document.getElementById("dot").className = health.relay_connected ? "dot on" : "dot";
       document.getElementById("relay").textContent = health.relay_connected ? "listener connected to public relay" : "listener not connected to relay";

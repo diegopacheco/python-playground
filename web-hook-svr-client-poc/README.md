@@ -49,7 +49,7 @@ admin UI shows everything the listener got. Pure Python standard library, no thi
 | HMAC SHA-256 signature | The smee.io channel is public, so anyone could POST to it. Only events signed with the secret show as valid. |
 | Timestamp in the signature | A captured signature cannot be replayed with another timestamp. |
 | Header redaction | smee.io forwards `client-ip`, `x-forwarded-for`, `x-client-port` and `x-original-url`. Any header whose name looks like ip, forwarded, url, port, origin or referer, and any value that looks like an IP or a smee.io channel, is stored as `[redacted]`, so no IP or channel URL is stored or shown. |
-| Correlation ID | One id per customer journey, from `house.ordered` to `house.delivered`. Sent as `X-Correlation-ID` and inside the signed payload, echoed on the API response, written to the webhook server and listener logs, and shown in the admin UI where a click shows only that journey. |
+| Correlation ID | One id per customer journey, from `house.ordered` to `house.delivered`. Sent as `X-Correlation-ID` and inside the signed payload, echoed on the API response, written to the webhook server and listener logs, and shown in the admin UI as a pill with its own light pastel color, where a click shows only that journey. |
 | De-duplication | An SSE reconnect cannot store the same event twice. |
 | Loud delivery failures | If the relay is down the server answers `502` instead of a silent success. |
 | Construction lifecycle | `ORDERED -> BUILDING_IN_FACTORY -> SHIPPED -> ARRIVED_ON_SITE -> ASSEMBLED -> INSPECTED -> DELIVERED`, no skipping or going past delivered. |
