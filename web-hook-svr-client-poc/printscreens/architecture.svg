@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1020" height="440" viewBox="0 0 1020 440">
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;display=swap'); text { font-family: 'Caveat', 'Comic Sans MS', cursive; fill: #1f2328; }</style>
+    <filter id="wobble"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="7"/><feDisplacementMap in="SourceGraphic" scale="3"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1,1 L10,6 L1,11" fill="none" stroke="#1f2328" stroke-width="2"/></marker>
+  </defs>
+  <rect width="1020" height="440" fill="#fffdf8"/>
+  <g filter="url(#wobble)" stroke="#1f2328" stroke-width="2.2">
+    <rect x="30" y="60" width="270" height="100" rx="14" fill="#fde2c8"/>
+    <rect x="375" y="60" width="270" height="100" rx="14" fill="#d8ecff"/>
+    <rect x="720" y="60" width="270" height="100" rx="14" fill="#e9dcff"/>
+    <rect x="720" y="280" width="270" height="110" rx="14" fill="#d6f5dd"/>
+    <rect x="375" y="280" width="270" height="110" rx="14" fill="#fff4b8"/>
+    <rect x="30" y="280" width="270" height="110" rx="14" fill="#ffffff" stroke-dasharray="8 6"/>
+  </g>
+  <g filter="url(#wobble)" stroke="#1f2328" stroke-width="2.4" fill="none" marker-end="url(#arrow)">
+    <path d="M302,110 L370,110"/>
+    <path d="M647,110 L715,110"/>
+    <path d="M855,162 L855,275"/>
+    <path d="M718,335 L650,335"/>
+    <path d="M373,335 L305,335"/>
+  </g>
+  <text x="165" y="100" font-size="26" font-weight="700" text-anchor="middle">generate-synthetical</text>
+  <text x="165" y="128" font-size="26" font-weight="700" text-anchor="middle">-data.sh</text>
+  <text x="165" y="150" font-size="19" text-anchor="middle">random houses, curl</text>
+  <text x="510" y="98" font-size="26" font-weight="700" text-anchor="middle">Webhook Server :8081</text>
+  <text x="510" y="124" font-size="19" text-anchor="middle">pre-built houses API</text>
+  <text x="510" y="146" font-size="19" text-anchor="middle">HMAC SHA-256 signed POST</text>
+  <text x="855" y="98" font-size="26" font-weight="700" text-anchor="middle">smee.io</text>
+  <text x="855" y="124" font-size="19" text-anchor="middle">public webhook relay</text>
+  <text x="855" y="146" font-size="19" text-anchor="middle">public IP, no tunnel</text>
+  <text x="855" y="318" font-size="26" font-weight="700" text-anchor="middle">Listener :8082</text>
+  <text x="855" y="344" font-size="19" text-anchor="middle">SSE subscribe, verify</text>
+  <text x="855" y="368" font-size="19" text-anchor="middle">signature, SQLite</text>
+  <text x="510" y="318" font-size="26" font-weight="700" text-anchor="middle">Admin UI :8083</text>
+  <text x="510" y="344" font-size="19" text-anchor="middle">light theme, polls</text>
+  <text x="510" y="368" font-size="19" text-anchor="middle">/api/events every 2s</text>
+  <text x="165" y="325" font-size="26" font-weight="700" text-anchor="middle">Browser</text>
+  <text x="165" y="352" font-size="19" text-anchor="middle">localhost only</text>
+  <text x="336" y="48" font-size="20" text-anchor="middle">1. REST</text>
+  <text x="681" y="48" font-size="20" text-anchor="middle">2. webhook</text>
+  <text x="868" y="225" font-size="20">3. SSE stream</text>
+  <text x="684" y="420" font-size="20" text-anchor="middle">4. proxy</text>
+  <text x="339" y="420" font-size="20" text-anchor="middle">5. HTML</text>
+</svg>

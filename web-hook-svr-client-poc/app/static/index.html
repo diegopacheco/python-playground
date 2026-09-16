@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webhook Admin</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --card: #ffffff;
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --line: #e5e2da;
+    --accent: #c2410c;
+    --ok: #15803d;
+    --ok-bg: #dcfce7;
+    --bad: #b91c1c;
+    --bad-bg: #fee2e2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--line); background: var(--card); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 18px; }
+  h1 span { color: var(--accent); }
+  .relay { font-size: 13px; color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--bad); }
+  .dot.on { background: var(--ok); }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .stat b { display: block; font-size: 24px; }
+  .stat small { color: var(--muted); }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .filters button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  .filters button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .table { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  tbody tr.event { cursor: pointer; }
+  tbody tr.event:hover { background: #fbfaf7; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { color: var(--ok); background: var(--ok-bg); }
+  .badge.bad { color: var(--bad); background: var(--bad-bg); }
+  .type { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
+  pre { margin: 0; padding: 12px; background: #fbfaf7; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  .empty { padding: 32px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pre-built Houses <span>Webhook Admin</span></h1>
+  <div class="relay"><span id="dot" class="dot"></span><span id="relay">checking listener</span></div>
+</header>
+<main>
+  <section class="stats">
+    <div class="stat"><b id="total">0</b><small>events received</small></div>
+    <div class="stat"><b id="valid">0</b><small>valid signatures</small></div>
+    <div class="stat"><b id="invalid">0</b><small>rejected signatures</small></div>
+    <div class="stat"><b id="delivered">0</b><small>houses delivered</small></div>
+  </section>
+  <nav class="filters" id="filters"></nav>
+  <div class="table">
+    <table>
+      <thead><tr><th>Received</th><th>Event</th><th>Signature</th><th>House</th><th>Model</th><th>Lot</th><th>Status</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty">No webhooks received yet. Run ./generate-synthetical-data.sh</div>
+  </div>
+</main>
+<script>
+  const state = { events: [], filter: "all", open: new Set() };
+
+  const cell = (text, className) => {
+    const td = document.createElement("td");
+    const span = document.createElement("span");
+    span.textContent = text;
+    if (className) span.className = className;
+    td.appendChild(span);
+    return td;
+  };
+
+  const houseOf = (event) => (event.payload.data && event.payload.data.house) || {};
+
+  const renderFilters = () => {
+    const types = ["all", ...new Set(state.events.map((event) => event.type))];
+    const nav = document.getElementById("filters");
+    nav.replaceChildren(...types.map((type) => {
+      const button = document.createElement("button");
+      const count = type === "all" ? state.events.length : state.events.filter((event) => event.type === type).length;
+      button.textContent = `${type} (${count})`;
+      button.className = type === state.filter ? "active" : "";
+      button.onclick = () => { state.filter = type; render(); };
+      return button;
+    }));
+  };
+
+  const renderRows = () => {
+    const visible = state.events.filter((event) => state.filter === "all" || event.type === state.filter);
+    const rows = [];
+    visible.forEach((event) => {
+      const house = houseOf(event);
+      const tr = document.createElement("tr");
+      tr.className = "event";
+      tr.append(
+        cell(new Date(event.received_at).toLocaleTimeString()),
+        cell(event.type, "type"),
+        cell(event.signature_valid ? "valid" : "rejected", event.signature_valid ? "badge ok" : "badge bad"),
+        cell((house.id || "-").slice(0, 8)),
+        cell((house.model_details && house.model_details.name) || "-"),
+        cell(house.lot || "-"),
+        cell(house.status || "-"),
+      );
+      tr.onclick = () => { state.open.has(event.id) ? state.open.delete(event.id) : state.open.add(event.id); render(); };
+      rows.push(tr);
+      if (state.open.has(event.id)) {
+        const detail = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7;
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(event.payload, null, 2);
+        td.appendChild(pre);
+        detail.appendChild(td);
+        rows.push(detail);
+      }
+    });
+    document.getElementById("rows").replaceChildren(...rows);
+    document.getElementById("empty").style.display = visible.length ? "none" : "block";
+  };
+
+  const renderStats = () => {
+    const valid = state.events.filter((event) => event.signature_valid).length;
+    document.getElementById("total").textContent = state.events.length;
+    document.getElementById("valid").textContent = valid;
+    document.getElementById("invalid").textContent = state.events.length - valid;
+    document.getElementById("delivered").textContent = state.events.filter((event) => event.type === "house.delivered" && event.signature_valid).length;
+  };
+
+  const render = () => { renderStats(); renderFilters(); renderRows(); };
+
+  const refresh = async () => {
+    try {
+      const [events, health] = await Promise.all([
+        fetch("/api/events").then((response) => response.json()),
+        fetch("/health").then((response) => response.json()),
+      ]);
+      state.events = Array.isArray(events) ? events : [];
+      document.getElementById("dot").className = health.relay_connected ? "dot on" : "dot";
+      document.getElementById("relay").textContent = health.relay_connected ? "listener connected to public relay" : "listener not connected to relay";
+      render();
+    } catch (error) {
+      document.getElementById("dot").className = "dot";
+      document.getElementById("relay").textContent = "listener unavailable";
+    }
+  };
+
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>
