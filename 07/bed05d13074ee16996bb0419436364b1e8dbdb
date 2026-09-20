@@ -1,0 +1,14 @@
+python-3-pythonic-deck/.vscode/settings.json
+  h_8e2c3875396153 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "07bed05d13074ee16996bb0419436364b1e8dbdb",
+  "prompts": {},
+  "humans": {
+    "h_8e2c3875396153": {
+      "author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
