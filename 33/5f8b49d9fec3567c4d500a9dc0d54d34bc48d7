@@ -1,0 +1,25 @@
+python-3-pythonic-deck/src/main.py
+  h_8e2c3875396153 1,32-38
+  s_94ab439698d1a5::t_7aea7063a18cbc 2,20-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "335f8b49d9fec3567c4d500a9dc0d54d34bc48d7",
+  "prompts": {},
+  "humans": {
+    "h_8e2c3875396153": {
+      "author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_94ab439698d1a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f566331-148f-4be1-9a5f-96f6b7cacbb8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
