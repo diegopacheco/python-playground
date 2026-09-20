@@ -24,7 +24,7 @@ class CardDeck:
     def __getitem__(self, position: slice) -> list[Card]: ...
 
     def __getitem__(self, position: int | slice) -> Card | list[Card]:
-        return self._cards[position]
+            return self._cards[position]
 
 if __name__=="__main__":
     c = Card('7','diamonds')
