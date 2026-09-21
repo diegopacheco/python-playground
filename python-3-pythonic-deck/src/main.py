@@ -37,3 +37,6 @@ if __name__=="__main__":
     print('deck[2] == ' + str(deck[2]))
     print('deck[2:10] == ' + str(deck[2:10]))
     print('choise(deck) == ' + str( choice(deck)))
+
+    for card in deck:
+         print(card)
