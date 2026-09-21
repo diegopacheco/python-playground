@@ -7,7 +7,7 @@ class Card(NamedTuple):
 
 class CardDeck:
     ranks = [str(n) for n in range(2,11)] + list('JQKA')
-    suits = 'spade diamonds clubs hearts'.split()
+    suits = 'spades diamonds clubs hearts'.split()
 
     def __init__(self) -> None:
         self._cards = [Card(rank,suit)
@@ -40,3 +40,8 @@ if __name__=="__main__":
 
     for card in deck:
          print(card)
+
+    if Card('Q','hearts') in deck:
+        print(str(Card('Q','hearts')) + ' its in deck!')
+    else:
+        print(str(Card('Q','hearts')) + ' NOT in deck!')
