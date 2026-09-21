@@ -1,0 +1,15 @@
+python-3-pythonic-deck/src/main.py
+  h_8e2c3875396153 10,43-47
+  h_8e2c3875396153 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "09f11eada466b27673b6e06df598633575a6a4f4",
+  "prompts": {},
+  "humans": {
+    "h_8e2c3875396153": {
+      "author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
