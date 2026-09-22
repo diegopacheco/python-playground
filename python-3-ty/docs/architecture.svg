@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" width="960" height="420">
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700');
+      text { font-family: 'Caveat', 'Comic Sans MS', cursive; fill: #1e1e1e; }
+      .t { font-size: 26px; font-weight: 700; }
+      .s { font-size: 18px; }
+    </style>
+    <filter id="wobble"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" seed="3"/><feDisplacementMap in="SourceGraphic" scale="4"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1e1e1e"/></marker>
+  </defs>
+  <rect width="960" height="420" fill="#ffffff"/>
+  <g filter="url(#wobble)" stroke="#1e1e1e" stroke-width="2.2">
+    <rect x="30" y="40" width="240" height="110" rx="14" fill="#ffe8cc"/>
+    <rect x="360" y="40" width="240" height="110" rx="14" fill="#d0ebff"/>
+    <rect x="690" y="40" width="240" height="110" rx="14" fill="#d3f9d8"/>
+    <rect x="30" y="270" width="240" height="110" rx="14" fill="#e9ecef"/>
+    <rect x="360" y="270" width="240" height="110" rx="14" fill="#fff3bf"/>
+    <rect x="690" y="270" width="240" height="110" rx="14" fill="#f3d9fa"/>
+  </g>
+  <g stroke="#1e1e1e" stroke-width="2.2" fill="none" marker-end="url(#arrow)">
+    <path d="M270,95 C300,90 330,90 358,95"/>
+    <path d="M600,95 C630,90 660,90 688,95"/>
+    <path d="M810,150 C805,195 815,225 810,268"/>
+    <path d="M600,325 C630,320 660,320 688,325"/>
+    <path d="M740,150 C700,200 560,220 480,268" stroke-dasharray="7 6"/>
+    <path d="M150,268 C145,225 155,195 150,152" stroke-dasharray="7 6"/>
+  </g>
+  <text class="t" x="150" y="88" text-anchor="middle">main.py</text>
+  <text class="s" x="150" y="118" text-anchor="middle">seed + report</text>
+  <text class="t" x="480" y="88" text-anchor="middle">Pydantic</text>
+  <text class="s" x="480" y="118" text-anchor="middle">BookIn / BookOut</text>
+  <text class="t" x="810" y="88" text-anchor="middle">repository.py</text>
+  <text class="s" x="810" y="118" text-anchor="middle">models + SQLAlchemy 2.0</text>
+  <text class="t" x="150" y="318" text-anchor="middle">ty + ruff</text>
+  <text class="s" x="150" y="348" text-anchor="middle">types + lint gate</text>
+  <text class="t" x="480" y="318" text-anchor="middle">Alembic</text>
+  <text class="s" x="480" y="348" text-anchor="middle">0001 authors + books</text>
+  <text class="t" x="810" y="318" text-anchor="middle">SQLite</text>
+  <text class="s" x="810" y="348" text-anchor="middle">library.db</text>
+  <text class="s" x="824" y="215">session</text>
+  <text class="s" x="644" y="310" text-anchor="middle">migrates</text>
+  <text class="s" x="470" y="215" text-anchor="end">reads models</text>
+  <text class="s" x="164" y="215">checks all code</text>
+</svg>
