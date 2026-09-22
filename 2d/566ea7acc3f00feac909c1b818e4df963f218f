@@ -1,0 +1,71 @@
+onmx-classifier/scripts/status.sh
+  s_0a9de6274bbed0::t_7a655d691b1264 1-18
+onmx-classifier/scripts/test-all.sh
+  s_0a9de6274bbed0::t_7a655d691b1264 1-10
+onmx-classifier/scripts/ui.sh
+  s_0a9de6274bbed0::t_7a655d691b1264 1-12
+onmx-classifier/scripts/common.sh
+  s_0a9de6274bbed0::t_7a655d691b1264 1-116
+onmx-classifier/README.md
+  s_0a9de6274bbed0::t_4bf00537795622 1-54,56,58-128
+  s_0a9de6274bbed0::t_26aa75e794cc2b 55,57
+onmx-classifier/scripts/setup.sh
+  s_0a9de6274bbed0::t_7a655d691b1264 1-9
+onmx-classifier/scripts/ports.env
+  s_0a9de6274bbed0::t_7a655d691b1264 1
+onmx-classifier/scripts/start-all.sh
+  s_0a9de6274bbed0::t_7a655d691b1264 1-20
+onmx-classifier/src/onnx_router/paths.py
+  s_0a9de6274bbed0::t_c04af6323ccb58 1-5
+onmx-classifier/.gitignore
+  s_0a9de6274bbed0::t_7a655d691b1264 6
+  s_0a9de6274bbed0::t_f093716172255b 1-5
+onmx-classifier/pyproject.toml
+  s_0a9de6274bbed0::t_788e44cb62bbfd 1-3,5-12,15-27
+  s_0a9de6274bbed0::t_f093716172255b 4,13-14,28-37
+onmx-classifier/src/onnx_router/static/index.html
+  s_0a9de6274bbed0::t_37e537a67ef718 85
+  s_0a9de6274bbed0::t_f83610a55846b8 1-84,86-96
+onmx-classifier/src/onnx_router/server.py
+  s_0a9de6274bbed0::t_04e92e780be443 1-61
+onmx-classifier/src/onnx_router/train.py
+  s_0a9de6274bbed0::t_c04af6323ccb58 1-15,21-53
+  s_0a9de6274bbed0::t_72527daf7a24d5 20
+  s_0a9de6274bbed0::t_ca689a28e1108b 16-19
+onmx-classifier/scripts/stop-all.sh
+  s_0a9de6274bbed0::t_7a655d691b1264 1-15
+onmx-classifier/src/onnx_router/router.py
+  s_0a9de6274bbed0::t_9474c5052ddd43 42
+  s_0a9de6274bbed0::t_ca689a28e1108b 61-63
+  s_0a9de6274bbed0::t_508321370eee93 1-15,17-41,43-60,64
+  s_0a9de6274bbed0::t_37e537a67ef718 16
+onmx-classifier/src/onnx_router/dataset.py
+  s_0a9de6274bbed0::t_0cb90257e7b2e2 1-120
+onmx-classifier/docs/architecture.svg
+  s_0a9de6274bbed0::t_5b4626205c72e3 74
+  s_0a9de6274bbed0::t_ae04f50e61ed23 1-73,75-87
+onmx-classifier/tests/conftest.py
+  s_0a9de6274bbed0::t_fb17c0890e46be 1-16
+onmx-classifier/tests/test_router.py
+  s_0a9de6274bbed0::t_725b3c89855eec 1-54
+onmx-classifier/tests/test_server.py
+  s_0a9de6274bbed0::t_00ecc63d9c5093 1-54
+onmx-classifier/uv.lock
+  s_0a9de6274bbed0::t_b540abc44bad44 1-424
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2d566ea7acc3f00feac909c1b818e4df963f218f",
+  "prompts": {},
+  "sessions": {
+    "s_0a9de6274bbed0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9452fcbd-ad5f-4cff-9dec-4d9639893734",
+        "model": "claude-opus-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
