@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;display=swap');
+      text { font-family: 'Caveat', 'Comic Sans MS', cursive; fill: #1e1e1e; }
+      .title { font-size: 26px; font-weight: 700; }
+      .box { font-size: 21px; font-weight: 700; }
+      .small { font-size: 17px; }
+      .edge { font-size: 18px; fill: #555; }
+    </style>
+    <filter id="wobble">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="3"/>
+      <feDisplacementMap in="SourceGraphic" scale="3"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1e1e1e"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="560" fill="#ffffff"/>
+
+  <text class="title" x="40" y="40">training, run once by setup.sh</text>
+  <g filter="url(#wobble)" stroke="#1e1e1e" stroke-width="2">
+    <rect x="40" y="60" width="190" height="70" rx="10" fill="#fff3bf"/>
+    <rect x="280" y="60" width="190" height="70" rx="10" fill="#d0ebff"/>
+    <rect x="520" y="60" width="190" height="70" rx="10" fill="#e5dbff"/>
+    <rect x="760" y="60" width="190" height="70" rx="10" fill="#d3f9d8"/>
+  </g>
+  <text class="box" x="135" y="90" text-anchor="middle">dataset.py</text>
+  <text class="small" x="135" y="114" text-anchor="middle">96 labeled prompts</text>
+  <text class="box" x="375" y="90" text-anchor="middle">TF-IDF + LogReg</text>
+  <text class="small" x="375" y="114" text-anchor="middle">scikit-learn fit</text>
+  <text class="box" x="615" y="90" text-anchor="middle">skl2onnx</text>
+  <text class="small" x="615" y="114" text-anchor="middle">to_onnx + classes meta</text>
+  <text class="box" x="855" y="90" text-anchor="middle">router.onnx</text>
+  <text class="small" x="855" y="114" text-anchor="middle">models/</text>
+
+  <g filter="url(#wobble)" stroke="#1e1e1e" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M232,95 L276,95"/>
+    <path d="M472,95 L516,95"/>
+    <path d="M712,95 L756,95"/>
+    <path d="M840,132 L640,256"/>
+  </g>
+  <text class="edge" x="760" y="200">load once</text>
+
+  <text class="title" x="40" y="240">runtime, onnxruntime only</text>
+  <g filter="url(#wobble)" stroke="#1e1e1e" stroke-width="2">
+    <rect x="40" y="260" width="190" height="70" rx="10" fill="#ffe3e3"/>
+    <rect x="280" y="260" width="190" height="70" rx="10" fill="#d0ebff"/>
+    <rect x="520" y="260" width="190" height="70" rx="10" fill="#e5dbff"/>
+    <rect x="760" y="260" width="190" height="70" rx="10" fill="#fff3bf"/>
+  </g>
+  <text class="box" x="135" y="290" text-anchor="middle">Browser UI</text>
+  <text class="small" x="135" y="314" text-anchor="middle">or any HTTP client</text>
+  <text class="box" x="375" y="290" text-anchor="middle">server.py</text>
+  <text class="small" x="375" y="314" text-anchor="middle">POST /api/route</text>
+  <text class="box" x="615" y="290" text-anchor="middle">Router</text>
+  <text class="small" x="615" y="314" text-anchor="middle">InferenceSession.run</text>
+  <text class="box" x="855" y="290" text-anchor="middle">confidence</text>
+  <text class="small" x="855" y="314" text-anchor="middle">at least 0.40 ?</text>
+
+  <g filter="url(#wobble)" stroke="#1e1e1e" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M232,295 L276,295"/>
+    <path d="M472,295 L516,295"/>
+    <path d="M712,295 L756,295"/>
+    <path d="M800,332 L660,416"/>
+    <path d="M900,332 L900,416"/>
+    <path d="M518,455 L474,455"/>
+    <path d="M855,492 L855,525 L375,525 L375,494"/>
+    <path d="M280,440 L170,334"/>
+  </g>
+  <text class="edge" x="700" y="380">yes</text>
+  <text class="edge" x="912" y="380">no</text>
+  <text class="edge" x="60" y="395">JSON response</text>
+
+  <g filter="url(#wobble)" stroke="#1e1e1e" stroke-width="2">
+    <rect x="280" y="420" width="190" height="70" rx="10" fill="#d3f9d8"/>
+    <rect x="520" y="420" width="190" height="70" rx="10" fill="#e5dbff"/>
+    <rect x="760" y="420" width="190" height="70" rx="10" fill="#ffe8cc"/>
+  </g>
+  <text class="box" x="375" y="450" text-anchor="middle">Decision</text>
+  <text class="small" x="375" y="474" text-anchor="middle">label, model, scores</text>
+  <text class="box" x="615" y="450" text-anchor="middle">ROUTES[label]</text>
+  <text class="small" x="615" y="474" text-anchor="middle">sonnet, opus, fable, haiku</text>
+  <text class="box" x="855" y="450" text-anchor="middle">DEFAULT_MODEL</text>
+  <text class="small" x="855" y="474" text-anchor="middle">claude-haiku-4-5</text>
+</svg>
