@@ -1,0 +1,76 @@
+python-3-ty/src/library/db.py
+  s_1ef4d6ce03ba68::t_3a009f062f8f01 1-27
+python-3-ty/scripts/setup.sh
+  s_1ef4d6ce03ba68::t_94c2523aba3769 6
+  s_1ef4d6ce03ba68::t_da68b4712c41fb 1-5,7-9
+python-3-ty/tests/test_library.py
+  s_1ef4d6ce03ba68::t_0738cdb59c61b0 1-55
+python-3-ty/tests/conftest.py
+  s_1ef4d6ce03ba68::t_0738cdb59c61b0 1-25
+python-3-ty/pyproject.toml
+  s_1ef4d6ce03ba68::t_ff270c73abcf35 11-20
+  s_83b628113e2817::t_7ab3b423a0f0c5 1-10,21-44
+python-3-ty/src/library/schemas.py
+  s_1ef4d6ce03ba68::t_3a009f062f8f01 1-18
+python-3-ty/broken/wrong_types.py
+  s_1ef4d6ce03ba68::t_0738cdb59c61b0 1-14
+python-3-ty/src/library/main.py
+  s_1ef4d6ce03ba68::t_3a009f062f8f01 1-38
+python-3-ty/migrations/versions/0001_create_authors_and_books.py
+  s_1ef4d6ce03ba68::t_3acff189f7f35a 6,13-18,20-32,37-38
+  s_1ef4d6ce03ba68::t_a05ce1a72699af 1-5,7-12,19,33-36
+python-3-ty/.gitignore
+  s_83b628113e2817::t_7ab3b423a0f0c5 1-5
+python-3-ty/docs/architecture.svg
+  s_1ef4d6ce03ba68::t_7ac2f5cfb8c1f5 1,6,11,13-18,21-26,28-31,34-43
+  s_1ef4d6ce03ba68::t_404e0309c4fc03 2-5,7-10,12,19-20,27,44
+  s_1ef4d6ce03ba68::t_38dd9bf5ef209d 32-33
+python-3-ty/src/library/models.py
+  s_1ef4d6ce03ba68::t_3a009f062f8f01 1-23
+python-3-ty/README.md
+  s_1ef4d6ce03ba68::t_404e0309c4fc03 1-130
+python-3-ty/src/library/repository.py
+  s_1ef4d6ce03ba68::t_3a009f062f8f01 1-42
+python-3-ty/alembic.ini
+  s_1ef4d6ce03ba68::t_8aa43a385ab66e 1-34
+python-3-ty/migrations/env.py
+  s_1ef4d6ce03ba68::t_f0267ad8e31873 1-31
+python-3-ty/migrations/script.py.mako
+  s_1ef4d6ce03ba68::t_c9e697e88e5531 1-17
+python-3-ty/scripts/common.sh
+  s_1ef4d6ce03ba68::t_aa7ff497d8f8d4 1-19
+python-3-ty/scripts/sql-console.sh
+  s_1ef4d6ce03ba68::t_dace16962b8bc4 1-7
+python-3-ty/scripts/start-all.sh
+  s_1ef4d6ce03ba68::t_f16f37f89f7064 1-8
+python-3-ty/scripts/status.sh
+  s_1ef4d6ce03ba68::t_1f9f1bd17ef9d0 1-12
+python-3-ty/scripts/test-all.sh
+  s_1ef4d6ce03ba68::t_18b18a0d6bdc01 1-18
+python-3-ty/uv.lock
+  s_1ef4d6ce03ba68::t_73c22738829f47 1-337
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "41ab3a299fc4cd8a211a3a53c2444b45f7dc3208",
+  "prompts": {},
+  "sessions": {
+    "s_1ef4d6ce03ba68": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f0799c8-4761-43a2-a731-a3cc364a5372",
+        "model": "unknown"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    },
+    "s_83b628113e2817": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a6ae150-818c-48f9-b152-d82e16bf0ec2",
+        "model": "unknown"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
