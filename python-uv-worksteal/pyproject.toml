@@ -1,0 +1,33 @@
+[project]
+name = "worksteal"
+version = "0.1.0"
+description = "uv + pytest-xdist worksteal POC that records and proves work stealing"
+readme = "README.md"
+authors = [
+    { name = "diegopacheco", email = "diego.pacheco.it@gmail.com" }
+]
+requires-python = ">=3.14.7"
+dependencies = ["pytest>=9.1.1", "pytest-xdist>=3.8.0"]
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.8",
+    "ty>=0.0.83",
+]
+
+[tool.ty.src]
+include = ["src", "tests", "workload"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
