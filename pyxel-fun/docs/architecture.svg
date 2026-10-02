@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;display=swap');
+      text { font-family: 'Caveat', 'Comic Sans MS', cursive; fill: #1e1e1e; }
+      .t { font-size: 24px; font-weight: 700; }
+      .s { font-size: 17px; }
+      .l { font-size: 16px; fill: #555; }
+      .box { stroke: #1e1e1e; stroke-width: 2; filter: url(#wobble); }
+      .arrow { stroke: #1e1e1e; stroke-width: 2; fill: none; marker-end: url(#head); filter: url(#wobble); }
+    </style>
+    <filter id="wobble" filterUnits="userSpaceOnUse" x="0" y="0" width="900" height="540">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="3" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3"/>
+    </filter>
+    <marker id="head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1e1e1e"/>
+    </marker>
+  </defs>
+  <rect width="900" height="540" fill="#ffffff"/>
+
+  <rect class="box" x="40" y="40" width="180" height="64" rx="12" fill="#d0ebff"/>
+  <text class="t" x="130" y="68" text-anchor="middle">Controls</text>
+  <text class="s" x="130" y="92" text-anchor="middle">keys + gamepad</text>
+
+  <rect class="box" x="360" y="40" width="180" height="64" rx="12" fill="#ffec99"/>
+  <text class="t" x="450" y="68" text-anchor="middle">App</text>
+  <text class="s" x="450" y="92" text-anchor="middle">state machine</text>
+
+  <rect class="box" x="680" y="40" width="180" height="64" rx="12" fill="#e5dbff"/>
+  <text class="t" x="770" y="68" text-anchor="middle">Audio</text>
+  <text class="s" x="770" y="92" text-anchor="middle">sfx + music loop</text>
+
+  <rect class="box" x="360" y="180" width="180" height="64" rx="12" fill="#b2f2bb"/>
+  <text class="t" x="450" y="208" text-anchor="middle">World</text>
+  <text class="s" x="450" y="232" text-anchor="middle">collide + camera</text>
+
+  <rect class="box" x="680" y="180" width="180" height="64" rx="12" fill="#ffd8a8"/>
+  <text class="t" x="770" y="208" text-anchor="middle">HUD</text>
+  <text class="s" x="770" y="232" text-anchor="middle">health bars</text>
+
+  <rect class="box" x="40" y="330" width="180" height="64" rx="12" fill="#a5d8ff"/>
+  <text class="t" x="130" y="358" text-anchor="middle">Player</text>
+  <text class="s" x="130" y="382" text-anchor="middle">dash + wall jump</text>
+
+  <rect class="box" x="250" y="330" width="180" height="64" rx="12" fill="#ffc9c9"/>
+  <text class="t" x="340" y="358" text-anchor="middle">Enemies</text>
+  <text class="s" x="340" y="382" text-anchor="middle">4 enemy kinds</text>
+
+  <rect class="box" x="460" y="330" width="180" height="64" rx="12" fill="#fff3bf"/>
+  <text class="t" x="550" y="358" text-anchor="middle">Shots</text>
+  <text class="s" x="550" y="382" text-anchor="middle">1, 2, 4 damage</text>
+
+  <rect class="box" x="670" y="330" width="180" height="64" rx="12" fill="#eebefa"/>
+  <text class="t" x="760" y="358" text-anchor="middle">Particles</text>
+  <text class="s" x="760" y="382" text-anchor="middle">bursts + rings</text>
+
+  <rect class="box" x="150" y="452" width="180" height="64" rx="12" fill="#c3fae8"/>
+  <text class="t" x="240" y="480" text-anchor="middle">Level</text>
+  <text class="s" x="240" y="504" text-anchor="middle">tile grid + spawns</text>
+
+  <rect class="box" x="460" y="452" width="180" height="64" rx="12" fill="#dee2e6"/>
+  <text class="t" x="550" y="480" text-anchor="middle">Physics</text>
+  <text class="s" x="550" y="504" text-anchor="middle">gravity + AABB</text>
+
+  <path class="arrow" d="M222,72 L356,72"/>
+  <text class="l" x="289" y="62" text-anchor="middle">input</text>
+  <path class="arrow" d="M542,72 L676,72"/>
+  <text class="l" x="609" y="62" text-anchor="middle">sfx events</text>
+  <path class="arrow" d="M450,106 L450,176"/>
+  <text class="l" x="460" y="146">step</text>
+  <path class="arrow" d="M542,212 L676,212"/>
+  <text class="l" x="609" y="202" text-anchor="middle">hp</text>
+  <path class="arrow" d="M400,246 L140,326"/>
+  <path class="arrow" d="M430,246 L345,326"/>
+  <path class="arrow" d="M470,246 L545,326"/>
+  <path class="arrow" d="M510,246 L750,326"/>
+  <path class="arrow" d="M130,396 L470,452"/>
+  <path class="arrow" d="M360,396 L520,450"/>
+  <path class="arrow" d="M458,484 L334,484"/>
+  <text class="l" x="396" y="474" text-anchor="middle">tiles</text>
+</svg>
