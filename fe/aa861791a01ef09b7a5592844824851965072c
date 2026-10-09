@@ -1,0 +1,52 @@
+granian-fun/tests/test_main.py
+  s_f0c60c69e7f4e2::t_75dd3b4c0ad02a 1-66
+granian-fun/scripts/ports.env
+  s_f0c60c69e7f4e2::t_bdce7181d374d4 1
+granian-fun/scripts/setup.sh
+  s_f0c60c69e7f4e2::t_767af7bd4122b9 1-13
+granian-fun/requirements.txt
+  s_f0c60c69e7f4e2::t_ceb990963b892d 1-2
+granian-fun/scripts/test-all.sh
+  s_f0c60c69e7f4e2::t_dc245132930072 1-11
+granian-fun/src/main.py
+  s_f0c60c69e7f4e2::t_736bd5403e6d20 1-40
+granian-fun/README.md
+  s_f0c60c69e7f4e2::t_36d146384e29d1 1-116
+granian-fun/src/web.py
+  s_f0c60c69e7f4e2::t_539e95996ef93f 1-72
+granian-fun/.gitignore
+  s_f0c60c69e7f4e2::t_fe19f34339c97d 1-4
+granian-fun/docs/architecture.svg
+  s_f0c60c69e7f4e2::t_55029774235ecf 1-60
+granian-fun/src/tasks.py
+  s_f0c60c69e7f4e2::t_e41cddec20a7a9 1-43
+granian-fun/scripts/start-all.sh
+  s_f0c60c69e7f4e2::t_1a114bdba45bb1 1-20
+granian-fun/src/api.py
+  s_f0c60c69e7f4e2::t_f2f4135cdade5a 1-82
+granian-fun/scripts/status.sh
+  s_f0c60c69e7f4e2::t_0e8372abf0325e 1-18
+granian-fun/tests/test_api.py
+  s_f0c60c69e7f4e2::t_c2a70b29a8da68 1-40,43-106
+  s_f0c60c69e7f4e2::t_9904a0d3da862e 41-42
+granian-fun/scripts/common.sh
+  s_f0c60c69e7f4e2::t_a057c1ff394cfa 1-104
+granian-fun/scripts/stop-all.sh
+  s_f0c60c69e7f4e2::t_82867f3601db31 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "feaa861791a01ef09b7a5592844824851965072c",
+  "prompts": {},
+  "sessions": {
+    "s_f0c60c69e7f4e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c0430cbb-2f68-4421-9620-14bdb4275fa5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "diegopacheco <diego.pacheco.it@gmail.com>"
+    }
+  }
+}
