@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 630" width="900" height="630">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;display=swap');
+      text { font-family: 'Caveat', 'Comic Sans MS', cursive; fill: #1e1e1e; }
+      .t { font-size: 24px; font-weight: 700; }
+      .s { font-size: 17px; }
+      .box { stroke: #1e1e1e; stroke-width: 2; filter: url(#wobble); }
+      .arrow { stroke: #1e1e1e; stroke-width: 2; fill: none; marker-end: url(#head); filter: url(#wobble); }
+    </style>
+    <filter id="wobble" filterUnits="userSpaceOnUse" x="0" y="0" width="900" height="630">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="3" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3"/>
+    </filter>
+    <marker id="head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1e1e1e"/>
+    </marker>
+  </defs>
+  <rect width="900" height="630" fill="#ffffff"/>
+
+  <rect class="box" x="30" y="30" width="180" height="64" rx="12" fill="#d0ebff"/>
+  <text class="t" x="120" y="58" text-anchor="middle">setup.sh</text>
+  <text class="s" x="120" y="82" text-anchor="middle">uv sync on 3.15</text>
+  <rect class="box" x="250" y="30" width="180" height="64" rx="12" fill="#d0ebff"/>
+  <text class="t" x="340" y="58" text-anchor="middle">run-all.sh</text>
+  <text class="s" x="340" y="82" text-anchor="middle">runs every feature</text>
+  <rect class="box" x="470" y="30" width="180" height="64" rx="12" fill="#d0ebff"/>
+  <text class="t" x="560" y="58" text-anchor="middle">test-all.sh</text>
+  <text class="s" x="560" y="82" text-anchor="middle">lint, types, tests</text>
+  <rect class="box" x="690" y="30" width="180" height="64" rx="12" fill="#d0ebff"/>
+  <text class="t" x="780" y="58" text-anchor="middle">flamegraph.sh</text>
+  <text class="s" x="780" y="82" text-anchor="middle">sudo on macOS</text>
+  <rect class="box" x="30" y="170" width="180" height="64" rx="12" fill="#d3f9d8"/>
+  <text class="t" x="120" y="198" text-anchor="middle">.venv</text>
+  <text class="s" x="120" y="222" text-anchor="middle">Python 3.15, ruff, ty</text>
+  <path class="arrow" d="M120,96 L120,166"/>
+  <rect class="box" x="250" y="170" width="180" height="64" rx="12" fill="#ffec99"/>
+  <text class="t" x="340" y="198" text-anchor="middle">src/main.py</text>
+  <text class="s" x="340" y="222" text-anchor="middle">calls main() per file</text>
+  <path class="arrow" d="M340,96 L340,166"/>
+  <rect class="box" x="470" y="170" width="180" height="64" rx="12" fill="#e5dbff"/>
+  <text class="t" x="560" y="198" text-anchor="middle">checks</text>
+  <text class="s" x="560" y="222" text-anchor="middle">ruff, ty, unittest</text>
+  <path class="arrow" d="M560,96 L560,166"/>
+  <rect class="box" x="690" y="170" width="180" height="64" rx="12" fill="#ffd8a8"/>
+  <text class="t" x="780" y="198" text-anchor="middle">Tachyon</text>
+  <text class="s" x="780" y="222" text-anchor="middle">profiling.sampling</text>
+  <path class="arrow" d="M780,96 L780,166"/>
+  <rect class="box" x="30" y="310" width="840" height="300" rx="14" fill="#f8f9fa"/>
+  <text class="t" x="450" y="340" text-anchor="middle">src/ one typed file per Python 3.15 feature</text>
+  <path class="arrow" d="M340,236 L340,306"/>
+  <path class="arrow" d="M560,236 L560,306"/>
+  <path class="arrow" d="M780,236 L780,306"/>
+  <rect class="box" x="50" y="356" width="260" height="112" rx="12" fill="#fff3bf"/>
+  <text class="t" x="180" y="384" text-anchor="middle">Lazy imports</text>
+  <text class="s" x="180" y="408" text-anchor="middle">lazy_imports.py</text>
+  <text class="s" x="180" y="428" text-anchor="middle">lazy_modules_global.py</text>
+  <text class="s" x="180" y="448" text-anchor="middle">lazy_imports_flag.py</text>
+  <rect class="box" x="320" y="356" width="260" height="112" rx="12" fill="#ffd8a8"/>
+  <text class="t" x="450" y="384" text-anchor="middle">Profiling</text>
+  <text class="s" x="450" y="408" text-anchor="middle">profiling_tracing.py</text>
+  <text class="s" x="450" y="428" text-anchor="middle">profiling_sampling.py</text>
+  <rect class="box" x="590" y="356" width="260" height="112" rx="12" fill="#e5dbff"/>
+  <text class="t" x="720" y="384" text-anchor="middle">Typing</text>
+  <text class="s" x="720" y="408" text-anchor="middle">typeddict_closed.py</text>
+  <text class="s" x="720" y="428" text-anchor="middle">typeddict_extra_items.py</text>
+  <text class="s" x="720" y="448" text-anchor="middle">typeform.py</text>
+  <rect class="box" x="50" y="480" width="260" height="112" rx="12" fill="#d3f9d8"/>
+  <text class="t" x="180" y="508" text-anchor="middle">Builtin types</text>
+  <text class="s" x="180" y="532" text-anchor="middle">sentinel_type.py</text>
+  <text class="s" x="180" y="552" text-anchor="middle">frozendict_type.py</text>
+  <rect class="box" x="320" y="480" width="260" height="112" rx="12" fill="#d0ebff"/>
+  <text class="t" x="450" y="508" text-anchor="middle">Syntax</text>
+  <text class="s" x="450" y="532" text-anchor="middle">comprehension_unpacking.py</text>
+  <rect class="box" x="590" y="480" width="260" height="112" rx="12" fill="#ffc9c9"/>
+  <text class="t" x="720" y="508" text-anchor="middle">Build</text>
+  <text class="s" x="720" y="532" text-anchor="middle">build_info.py</text>
+</svg>
