@@ -132,6 +132,7 @@ All scripts live in `scripts/` and run from any directory of the repository.
 | `./scripts/start-all.sh` | Starts every service and prints the full link of each one |
 | `./scripts/status.sh` | Shows every service port as UP or DOWN |
 | `./scripts/test-all.sh` | Runs every test suite |
+| `./scripts/tox-type-check-with-ty.sh` | Runs only the ty type check through `tox -e types` |
 | `./scripts/ui.sh` | Opens the UI in the browser |
 | `./scripts/stop-all.sh` | Stops every service |
 
