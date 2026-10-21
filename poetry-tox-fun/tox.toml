@@ -1,14 +1,16 @@
 requires = ["tox>=4.22"]
 env_list = ["tests", "types"]
+labels = { matrix = ["py313", "py314", "py315"] }
 
 [env_run_base]
-base_python = ["python3.15"]
+description = "run the pytest suite against the installed wheel on {env_name}"
 dependency_groups = ["dev"]
+commands = [["pytest", { replace = "posargs", extend = true }]]
 
 [env.tests]
-description = "run the pytest suite against the installed wheel"
-commands = [["pytest", { replace = "posargs", extend = true }]]
+base_python = ["python3.15"]
 
 [env.types]
 description = "run ty on src and tests, failing on any warning"
+base_python = ["python3.15"]
 commands = [["ty", "check"]]

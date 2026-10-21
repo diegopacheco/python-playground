@@ -1,12 +1,12 @@
 # poetry-tox-fun
 
-A small notes web app written in typed Python 3.15. It uses only the standard library at runtime. uv installs the toolchain, Poetry builds and installs the app, tox runs the tests and the type check, and ty checks the types.
+A small notes web app written in typed Python. It targets 3.15 and also runs on 3.13 and 3.14. It uses only the standard library at runtime. uv installs the toolchain, Poetry builds and installs the app, tox runs the tests and the type check, and ty checks the types.
 
 ## How it Works
 
 1. `uv` installs Python 3.15.0 and installs `poetry` and `tox` (with the `tox-uv` plugin) as tools.
 2. `poetry install` creates `.venv/` from `pyproject.toml` and `poetry.lock`, and installs the `notes-app` console script.
-3. `tox` builds a wheel with `poetry-core`, then runs two environments: `tests` (pytest) and `types` (ty).
+3. `tox` builds a wheel with `poetry-core`, then runs two environments: `tests` (pytest on 3.15) and `types` (ty). The `matrix` label runs pytest on 3.13, 3.14 and 3.15 in parallel.
 4. `notes-app` starts a `ThreadingHTTPServer` on port 8080.
 5. `GET /` returns the HTML UI. The UI uses `fetch` against `/api/notes` to list, create and delete notes.
 6. `NoteStore` keeps notes in memory in a dict guarded by a `Lock`. It validates and trims every field before storing it.
@@ -22,14 +22,15 @@ A small notes web app written in typed Python 3.15. It uses only the standard li
 * Input validation: titles are required, fields are trimmed and size-limited, and non-string JSON is rejected with a 400 and a reason.
 * Stable ids: ids are never reused, so a deleted note's URL never points to a different note.
 * No runtime dependencies: `http.server`, `json`, `dataclasses` and `threading` are enough.
-* Type checking: `ty check` checks `src/` and `tests/` and fails on any warning, and the package ships `py.typed`.
+* Type checking: `ty check` checks `src/` and `tests/` against Python 3.13, the oldest supported version, so it catches newer-only APIs. It fails on any warning, and the package ships `py.typed`.
+* Version matrix: `tox -m matrix` runs the test suite on Python 3.13, 3.14 and 3.15 in parallel, so a version-specific break shows up in a single run.
 
 ## Stack
 
 * Python 3.15.0: the latest CPython release.
 * uv: installs the Python interpreter and the Poetry and tox tools in seconds.
 * Poetry 2.5: owns the lock file, the virtualenv, the build backend (`poetry-core`) and the console script.
-* tox 4 + tox-uv: runs tests and types in isolated environments against the built package, not the source tree.
+* tox 4 + tox-uv: runs tests and types in isolated environments against the built package, not the source tree, and runs the version matrix.
 * pytest: the test runner.
 * ty: Astral's fast type checker, from the same team as uv.
 
@@ -68,7 +69,7 @@ src/notes_app/__main__.py  notes-app entrypoint
 tests/test_store.py        store rules
 tests/test_server.py       HTTP tests against a real server on a random port
 pyproject.toml             project, Poetry, ty and pytest config
-tox.toml                   tests and types environments
+tox.toml                   tests, types and matrix environments
 ```
 
 ## How to Run
@@ -89,6 +90,7 @@ poetry run ty check
 tox
 tox -e tests
 tox -e types
+tox -m matrix
 ```
 
 Test output:
@@ -106,6 +108,23 @@ All checks passed!
   tests: OK
   types: OK
   congratulations :)
+```
+
+Matrix output:
+
+```
+py313: OK
+py314: OK
+py315: OK
+congratulations :)
+```
+
+When the code uses an API that is missing in an older Python, only that version fails. For example, importing `string.templatelib` (new in 3.14) gives:
+
+```
+py313: FAIL code 2
+py314: OK
+py315: OK
 ```
 
 ## Printscreens
@@ -133,6 +152,7 @@ All scripts live in `scripts/` and run from any directory of the repository.
 | `./scripts/status.sh` | Shows every service port as UP or DOWN |
 | `./scripts/test-all.sh` | Runs every test suite |
 | `./scripts/tox-type-check-with-ty.sh` | Runs only the ty type check through `tox -e types` |
+| `./scripts/tox-matrix.sh` | Installs Python 3.13, 3.14 and 3.15 with uv and runs the tests on all three through `tox -m matrix` |
 | `./scripts/ui.sh` | Opens the UI in the browser |
 | `./scripts/stop-all.sh` | Stops every service |
 
