@@ -1,0 +1,27 @@
+[project]
+name = "notes-app"
+version = "0.1.0"
+description = "Typed Python 3.15 notes web app on the standard library, built with Poetry and tested with tox"
+requires-python = ">=3.15,<3.16"
+dependencies = []
+
+[project.scripts]
+notes-app = "notes_app.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=9", "mypy>=1.19"]
+
+[build-system]
+requires = ["poetry-core>=2.2"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{ include = "notes_app", from = "src" }]
+
+[tool.mypy]
+strict = true
+python_version = "3.15"
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

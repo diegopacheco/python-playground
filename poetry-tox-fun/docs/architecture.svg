@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;display=swap');
+      text { font-family: 'Caveat', 'Comic Sans MS', cursive; fill: #1e1e1e; }
+      .t { font-size: 24px; font-weight: 700; }
+      .s { font-size: 17px; }
+      .lane { font-size: 22px; font-weight: 700; fill: #868e96; }
+      .box { stroke: #1e1e1e; stroke-width: 2; filter: url(#wobble); }
+      .arrow { stroke: #1e1e1e; stroke-width: 2; fill: none; marker-end: url(#head); filter: url(#wobble); }
+      .sep { stroke: #adb5bd; stroke-width: 2; stroke-dasharray: 8 6; }
+    </style>
+    <filter id="wobble" filterUnits="userSpaceOnUse" x="0" y="0" width="900" height="540">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="3" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3"/>
+    </filter>
+    <marker id="head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1e1e1e"/>
+    </marker>
+  </defs>
+  <rect width="900" height="540" fill="#ffffff"/>
+
+  <text class="lane" x="30" y="60">toolchain</text>
+
+  <rect class="box" x="30" y="120" width="180" height="64" rx="12" fill="#d0ebff"/>
+  <text class="t" x="120" y="148" text-anchor="middle">uv</text>
+  <text class="s" x="120" y="172" text-anchor="middle">installs everything</text>
+
+  <rect class="box" x="300" y="30" width="200" height="64" rx="12" fill="#fff3bf"/>
+  <text class="t" x="400" y="58" text-anchor="middle">Python 3.15.0</text>
+  <text class="s" x="400" y="82" text-anchor="middle">uv python install</text>
+
+  <rect class="box" x="300" y="120" width="200" height="64" rx="12" fill="#fff3bf"/>
+  <text class="t" x="400" y="148" text-anchor="middle">Poetry 2.5</text>
+  <text class="s" x="400" y="172" text-anchor="middle">uv tool install</text>
+
+  <rect class="box" x="300" y="210" width="200" height="64" rx="12" fill="#fff3bf"/>
+  <text class="t" x="400" y="238" text-anchor="middle">tox 4 + tox-uv</text>
+  <text class="s" x="400" y="262" text-anchor="middle">uv tool install</text>
+
+  <rect class="box" x="600" y="120" width="270" height="64" rx="12" fill="#d3f9d8"/>
+  <text class="t" x="735" y="148" text-anchor="middle">.venv + poetry.lock</text>
+  <text class="s" x="735" y="172" text-anchor="middle">poetry install, notes-app script</text>
+
+  <rect class="box" x="600" y="210" width="270" height="56" rx="12" fill="#e5dbff"/>
+  <text class="t" x="735" y="234" text-anchor="middle">tests env</text>
+  <text class="s" x="735" y="256" text-anchor="middle">pytest on the built wheel</text>
+
+  <rect class="box" x="600" y="280" width="270" height="56" rx="12" fill="#e5dbff"/>
+  <text class="t" x="735" y="304" text-anchor="middle">types env</text>
+  <text class="s" x="735" y="326" text-anchor="middle">mypy --strict src tests</text>
+
+  <path class="arrow" d="M210,140 L298,70"/>
+  <path class="arrow" d="M210,152 L298,152"/>
+  <path class="arrow" d="M210,164 L298,234"/>
+  <path class="arrow" d="M500,152 L598,152"/>
+  <path class="arrow" d="M500,236 L598,238"/>
+  <path class="arrow" d="M500,252 L598,306"/>
+
+  <line class="sep" x1="30" y1="370" x2="870" y2="370"/>
+  <text class="lane" x="30" y="405">runtime</text>
+
+  <rect class="box" x="30" y="430" width="200" height="72" rx="12" fill="#ffe3e3"/>
+  <text class="t" x="130" y="462" text-anchor="middle">Browser</text>
+  <text class="s" x="130" y="486" text-anchor="middle">page.py HTML + fetch</text>
+
+  <rect class="box" x="330" y="430" width="240" height="72" rx="12" fill="#d0ebff"/>
+  <text class="t" x="450" y="462" text-anchor="middle">NotesServer</text>
+  <text class="s" x="450" y="486" text-anchor="middle">server.py, stdlib http.server</text>
+
+  <rect class="box" x="670" y="430" width="200" height="72" rx="12" fill="#d3f9d8"/>
+  <text class="t" x="770" y="462" text-anchor="middle">NoteStore</text>
+  <text class="s" x="770" y="486" text-anchor="middle">store.py, dict + Lock</text>
+
+  <path class="arrow" d="M230,466 L328,466"/>
+  <text class="s" x="280" y="525" text-anchor="middle">REST JSON</text>
+  <path class="arrow" d="M570,466 L668,466"/>
+  <text class="s" x="620" y="525" text-anchor="middle">add / all / delete</text>
+</svg>

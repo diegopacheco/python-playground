@@ -1,0 +1,14 @@
+requires = ["tox>=4.22"]
+env_list = ["tests", "types"]
+
+[env_run_base]
+base_python = ["python3.15"]
+dependency_groups = ["dev"]
+
+[env.tests]
+description = "run the pytest suite against the installed wheel"
+commands = [["pytest", { replace = "posargs", extend = true }]]
+
+[env.types]
+description = "run mypy in strict mode on src and tests"
+commands = [["mypy"]]
