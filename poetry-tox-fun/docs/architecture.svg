@@ -48,7 +48,7 @@
 
   <rect class="box" x="600" y="280" width="270" height="56" rx="12" fill="#e5dbff"/>
   <text class="t" x="735" y="304" text-anchor="middle">types env</text>
-  <text class="s" x="735" y="326" text-anchor="middle">mypy --strict src tests</text>
+  <text class="s" x="735" y="326" text-anchor="middle">ty check src tests</text>
 
   <path class="arrow" d="M210,140 L298,70"/>
   <path class="arrow" d="M210,152 L298,152"/>

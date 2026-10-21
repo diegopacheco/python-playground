@@ -10,5 +10,5 @@ description = "run the pytest suite against the installed wheel"
 commands = [["pytest", { replace = "posargs", extend = true }]]
 
 [env.types]
-description = "run mypy in strict mode on src and tests"
-commands = [["mypy"]]
+description = "run ty on src and tests, failing on any warning"
+commands = [["ty", "check"]]

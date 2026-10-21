@@ -1,12 +1,12 @@
 # poetry-tox-fun
 
-A small notes web app written in typed Python 3.15. It uses only the standard library at runtime. uv installs the toolchain, Poetry builds and installs the app, tox runs the tests and the type check, and mypy checks the types in strict mode.
+A small notes web app written in typed Python 3.15. It uses only the standard library at runtime. uv installs the toolchain, Poetry builds and installs the app, tox runs the tests and the type check, and ty checks the types.
 
 ## How it Works
 
 1. `uv` installs Python 3.15.0 and installs `poetry` and `tox` (with the `tox-uv` plugin) as tools.
 2. `poetry install` creates `.venv/` from `pyproject.toml` and `poetry.lock`, and installs the `notes-app` console script.
-3. `tox` builds a wheel with `poetry-core`, then runs two environments: `tests` (pytest) and `types` (mypy strict).
+3. `tox` builds a wheel with `poetry-core`, then runs two environments: `tests` (pytest) and `types` (ty).
 4. `notes-app` starts a `ThreadingHTTPServer` on port 8080.
 5. `GET /` returns the HTML UI. The UI uses `fetch` against `/api/notes` to list, create and delete notes.
 6. `NoteStore` keeps notes in memory in a dict guarded by a `Lock`. It validates and trims every field before storing it.
@@ -22,7 +22,7 @@ A small notes web app written in typed Python 3.15. It uses only the standard li
 * Input validation: titles are required, fields are trimmed and size-limited, and non-string JSON is rejected with a 400 and a reason.
 * Stable ids: ids are never reused, so a deleted note's URL never points to a different note.
 * No runtime dependencies: `http.server`, `json`, `dataclasses` and `threading` are enough.
-* Strict typing: `mypy --strict` checks `src/` and `tests/`, and the package ships `py.typed`.
+* Type checking: `ty check` checks `src/` and `tests/` and fails on any warning, and the package ships `py.typed`.
 
 ## Stack
 
@@ -31,7 +31,7 @@ A small notes web app written in typed Python 3.15. It uses only the standard li
 * Poetry 2.5: owns the lock file, the virtualenv, the build backend (`poetry-core`) and the console script.
 * tox 4 + tox-uv: runs tests and types in isolated environments against the built package, not the source tree.
 * pytest: the test runner.
-* mypy: the strict static type checker.
+* ty: Astral's fast type checker, from the same team as uv.
 
 ## Contracts / APIs
 
@@ -67,7 +67,7 @@ src/notes_app/page.py      HTML UI
 src/notes_app/__main__.py  notes-app entrypoint
 tests/test_store.py        store rules
 tests/test_server.py       HTTP tests against a real server on a random port
-pyproject.toml             project, Poetry, mypy and pytest config
+pyproject.toml             project, Poetry, ty and pytest config
 tox.toml                   tests and types environments
 ```
 
@@ -85,7 +85,7 @@ Without the scripts:
 poetry install
 poetry run notes-app
 poetry run pytest
-poetry run mypy
+poetry run ty check
 tox
 tox -e tests
 tox -e types
@@ -101,8 +101,8 @@ tests/test_server.py ........                                            [ 57%]
 tests/test_store.py ......                                               [100%]
 
 ============================== 14 passed ==============================
-types: commands[0]> mypy
-Success: no issues found in 7 source files
+types: commands[0]> ty check
+All checks passed!
   tests: OK
   types: OK
   congratulations :)
